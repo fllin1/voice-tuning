@@ -1,0 +1,26 @@
+[project]
+name = "voice-tuning"
+version = "0.1.0"
+description = "Local TTS voice-casting platform: audition voices across engines, A/B compare, lock in a cast."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.136.0",
+    "httpx>=0.28.1",
+    "jinja2>=3.1.6",
+    "misaki[en]>=0.9.4",
+    "mlx-audio>=0.4.2",
+    "pydantic-settings>=2.13.1",
+    "soundfile>=0.13.1",
+    "uvicorn[standard]>=0.44.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

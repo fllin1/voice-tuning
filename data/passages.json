@@ -1,0 +1,133 @@
+[
+  {
+    "slot": "ayanokoji",
+    "title": "Ayanokōji — flat dismissal",
+    "text": "It doesn't really matter to me. The result is the same either way."
+  },
+  {
+    "slot": "ayanokoji",
+    "title": "Ayanokōji — internal calculation",
+    "text": "If I push the lever now, an opportunity that may not return for months is gone. So I'll wait. The wait costs nothing."
+  },
+  {
+    "slot": "ayanokoji",
+    "title": "Ayanokōji — deadpan menace",
+    "text": "You misunderstand. I'm not threatening you. I'm describing what will happen."
+  },
+
+  {
+    "slot": "horikita",
+    "title": "Horikita — cold formality",
+    "text": "I have no interest in friendship. I came here to graduate from Class A, and that requires no companionship."
+  },
+  {
+    "slot": "horikita",
+    "title": "Horikita — cutting logic",
+    "text": "Why are you defending him? You know the data. Sentiment is not an argument."
+  },
+  {
+    "slot": "horikita",
+    "title": "Horikita — sharp dismissal",
+    "text": "If you're going to follow me, at least keep up. I won't slow down for hesitation."
+  },
+
+  {
+    "slot": "kushida_public",
+    "title": "Kushida (public) — bubbly hello",
+    "text": "Hi! It's so nice to finally meet you! Don't worry, everyone here is super welcoming, I promise!"
+  },
+  {
+    "slot": "kushida_public",
+    "title": "Kushida (public) — cheerful invite",
+    "text": "Oh, it's totally fine, really! I had so much fun. Let's do it again next weekend, okay? Pinky promise!"
+  },
+  {
+    "slot": "kushida_public",
+    "title": "Kushida (public) — generous warmth",
+    "text": "I baked these for the whole class. There's enough for everyone, so don't be shy!"
+  },
+
+  {
+    "slot": "kushida_private",
+    "title": "Kushida (private) — cold venom",
+    "text": "Of course I smile at her. It makes it easier to ruin her, don't you think?",
+    "emotion_tags": ["<chuckle>"]
+  },
+  {
+    "slot": "kushida_private",
+    "title": "Kushida (private) — quiet threat",
+    "text": "If you say a single word about what you saw, I will end you. Quietly, slowly, and the whole school will help."
+  },
+  {
+    "slot": "kushida_private",
+    "title": "Kushida (private) — mocking contempt",
+    "text": "Pathetic. You really thought I cared? About any of you? That smile costs me nothing.",
+    "emotion_tags": ["<laugh>"]
+  },
+
+  {
+    "slot": "karuizawa",
+    "title": "Karuizawa — bossy front",
+    "text": "Of course we're going to that café. Don't make me say it twice. I already told the others."
+  },
+  {
+    "slot": "karuizawa",
+    "title": "Karuizawa — fragile vulnerability",
+    "text": "I wasn't scared. I just… I just don't like being alone in the dark, that's all."
+  },
+  {
+    "slot": "karuizawa",
+    "title": "Karuizawa — anxious confession",
+    "text": "You can't tell anyone, okay? Promise me. If they find out, I don't know what I'll do."
+  },
+
+  {
+    "slot": "ichinose",
+    "title": "Ichinose — warm sincerity",
+    "text": "I really do believe in everyone here. There isn't a single person in our class I'm not proud of."
+  },
+  {
+    "slot": "ichinose",
+    "title": "Ichinose — gentle reassurance",
+    "text": "It's okay. Whatever happened today, we'll figure it out together. Let's just sit for a moment."
+  },
+  {
+    "slot": "ichinose",
+    "title": "Ichinose — soft compassion",
+    "text": "Please, don't apologize. You did the best you could. That's all I ever ask of anyone."
+  },
+
+  {
+    "slot": "sakayanagi",
+    "title": "Sakayanagi — theatrical contempt",
+    "text": "How quaint. You honestly believed that was your own decision?"
+  },
+  {
+    "slot": "sakayanagi",
+    "title": "Sakayanagi — chess-master poise",
+    "text": "The board has already been arranged. Every move you make from here only confirms which piece you are."
+  },
+  {
+    "slot": "sakayanagi",
+    "title": "Sakayanagi — aristocratic delight",
+    "text": "I do enjoy these little games. It would be a shame to end them too quickly, wouldn't you agree?"
+  },
+
+  {
+    "slot": "ryuen",
+    "title": "Ryūen — low menace taunt",
+    "text": "Heh. You think hiding behind your friends is going to save you? I'll find you anyway.",
+    "emotion_tags": ["<chuckle>"]
+  },
+  {
+    "slot": "ryuen",
+    "title": "Ryūen — predatory pressure",
+    "text": "Talk. Tell me a name. I don't have all night, and I'm not a patient man."
+  },
+  {
+    "slot": "ryuen",
+    "title": "Ryūen — swaggering threat",
+    "text": "I don't lose. Even when I lose, I don't lose. Remember that next time you try this.",
+    "emotion_tags": ["<laugh>"]
+  }
+]

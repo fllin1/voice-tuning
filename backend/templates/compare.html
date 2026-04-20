@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Compare · Voice-Tuning{% endblock %}
+{% block content %}
+<section class="compare">
+  <div class="cmdbar">
+    <button id="btn-passage" class="pill" type="button">
+      <span class="pill-label">Passage</span>
+      <span class="pill-value" data-pill-value>— none —</span>
+      <span class="pill-caret">▾</span>
+    </button>
+    <button id="btn-voices" class="pill" type="button">
+      <span class="pill-label">Voices</span>
+      <span class="pill-value" data-pill-value>0 selected</span>
+      <span class="pill-caret">▾</span>
+    </button>
+    <label class="speed-inline">
+      <span class="pill-label">Speed</span>
+      <input id="speed-input" type="number" min="0.7" max="1.3" step="0.05" value="1.00">
+    </label>
+    <button id="btn-advanced" class="ghost" type="button" aria-expanded="false">
+      <span class="adv-caret">▸</span> Advanced
+    </button>
+    <span class="cmdbar-spacer"></span>
+    <button id="generate-btn" class="primary" type="button">Generate batch</button>
+  </div>
+
+  <div id="advanced-panel" class="advanced-panel" hidden></div>
+
+  <div id="results-toolbar" class="results-toolbar" hidden>
+    <div id="filter-chips" class="chip-row"></div>
+    <div class="results-toolbar-spacer"></div>
+    <label class="sort-inline">
+      <span class="pill-label">Sort</span>
+      <select id="sort-select">
+        <option value="newest">Newest</option>
+        <option value="rated">Highest rated</option>
+        <option value="engine">Engine</option>
+        <option value="voice">Voice</option>
+      </select>
+    </label>
+  </div>
+
+  <div id="results-grid" class="grid"></div>
+  <div id="empty-state" class="empty-state">
+    <p class="empty-title">No results yet</p>
+    <p class="empty-hint">Pick a passage and some voices, then hit <em>Generate batch</em>.</p>
+  </div>
+
+  <div id="ab-dock" class="ab-dock" hidden></div>
+  <div id="ab-drawer" class="ab-drawer" hidden></div>
+  <div id="drawer-scrim" class="drawer-scrim" hidden></div>
+</section>
+{% endblock %}
