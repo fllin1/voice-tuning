@@ -61,6 +61,23 @@ async function initCompare() {
   initAbDock();
   refreshAbDock();
   updateEmptyState();
+  hydrateAllResults();
+}
+
+async function hydrateAllResults() {
+  const grid = $("#results-grid");
+  if (!grid) return;
+  const existing = new Set(
+    $$('.card[data-result-id]', grid).map(c => parseInt(c.dataset.resultId, 10))
+  );
+  const { results } = await api("/api/results?limit=200");
+  for (const r of results) {
+    if (existing.has(r.id)) continue;
+    addHydratedCard(r);
+  }
+  updateEmptyState();
+  applyFilters();
+  sortCards();
 }
 
 function initCmdBar() {

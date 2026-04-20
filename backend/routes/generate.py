@@ -123,6 +123,14 @@ def get_audio(filename: str):
     return FileResponse(cache.path_for(audio_hash), media_type="audio/wav")
 
 
+@router.get("/api/results")
+def list_results(limit: int = 200) -> dict:
+    rows = db.list_all_results(limit=limit)
+    for r in rows:
+        r["audio_url"] = f"/api/audio/{r['audio_hash']}.wav"
+    return {"results": rows}
+
+
 @router.get("/api/results/{result_id}")
 def get_result(result_id: int) -> dict:
     r = db.get_result(result_id)

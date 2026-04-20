@@ -176,6 +176,17 @@ def list_results_for_passage(passage_id: int) -> list[dict]:
     return [_result_row_to_dict(r) for r in rows]
 
 
+def list_all_results(limit: int = 200) -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT r.*, ra.stars, ra.notes "
+            "FROM results r LEFT JOIN ratings ra ON r.id = ra.result_id "
+            "ORDER BY r.id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [_result_row_to_dict(r) for r in rows]
+
+
 def list_results_for_slot(slot: str) -> list[dict]:
     with connect() as conn:
         rows = conn.execute(
