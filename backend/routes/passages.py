@@ -26,6 +26,16 @@ def get_passage(passage_id: int) -> dict:
     return p
 
 
+@router.get("/api/passages/{passage_id}/results")
+def list_passage_results(passage_id: int) -> dict:
+    if not db.get_passage(passage_id):
+        raise HTTPException(404, "passage not found")
+    rows = db.list_results_for_passage(passage_id)
+    for r in rows:
+        r["audio_url"] = f"/api/audio/{r['audio_hash']}.wav"
+    return {"results": rows}
+
+
 @router.post("/api/passages")
 def create_passage(body: PassageIn) -> dict:
     pid = db.create_passage(

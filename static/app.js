@@ -119,6 +119,7 @@ function openPassagePopover(anchor) {
         State.customText = "";
         refreshPassagePill();
         closePopover(pop);
+        hydratePriorResults();
       });
     });
   };
@@ -501,6 +502,52 @@ function updateEmptyState() {
   if (toolbar) toolbar.hidden = !hasCards;
 }
 
+async function hydratePriorResults() {
+  if (!State.selectedPassageId) return;
+  const grid = $("#results-grid");
+  if (!grid) return;
+  const existing = new Set(
+    $$('.card[data-result-id]', grid).map(c => parseInt(c.dataset.resultId, 10))
+  );
+  const { results } = await api(`/api/passages/${State.selectedPassageId}/results`);
+  for (const r of results) {
+    if (existing.has(r.id)) continue;
+    addHydratedCard(r);
+  }
+  updateEmptyState();
+  applyFilters();
+  sortCards();
+}
+
+function addHydratedCard(r) {
+  const grid = $("#results-grid");
+  const card = document.createElement("div");
+  card.className = "card";
+  card.id = `result-${r.id}`;
+  card.dataset.engine = r.engine;
+  card.dataset.voiceId = r.voice_id;
+  card.dataset.created = String(r.generated_at || Date.now());
+  card.dataset.stars = String(r.stars || 0);
+  card.innerHTML = `
+    <div class="card-header">
+      <div class="card-title">
+        <strong>${escapeHtml(r.voice_id)}</strong>
+        <span class="voice-id">${escapeHtml(r.engine)}</span>
+      </div>
+      <div class="badges">
+        <span class="badge done" data-status>done</span>
+      </div>
+    </div>
+    <div data-body></div>
+  `;
+  grid.appendChild(card);
+  fillCard(
+    card,
+    { result_id: r.id, audio_url: r.audio_url, engine: r.engine, voice_id: r.voice_id },
+    { initialStars: r.stars || 0, initialNotes: r.notes || "" },
+  );
+}
+
 function addPlaceholderCard(jobId, jobSpec) {
   const grid = $("#results-grid");
   const card = document.createElement("div");
@@ -549,7 +596,7 @@ async function pollBatch(batchId) {
   }
 }
 
-function fillCard(card, job) {
+function fillCard(card, job, options = {}) {
   card.classList.add("filled");
   card.dataset.resultId = String(job.result_id);
   const body = $('[data-body]', card);
@@ -574,16 +621,17 @@ function fillCard(card, job) {
       <button class="ab-stage-btn" data-ab type="button">+ A/B</button>
     </div>
   `;
-  initStars(card, body, job.result_id);
-  initNotes(body, job.result_id);
+  initStars(card, body, job.result_id, options.initialStars || 0);
+  initNotes(body, job.result_id, options.initialNotes || "");
   initAbStageBtn(body, job, card);
   initSpeedRegen(card, body, job);
   initAssignSelect(body, job.result_id);
 }
 
-function initStars(card, scope, resultId) {
+function initStars(card, scope, resultId, initial = 0) {
   const root = $('[data-stars]', scope);
-  let current = 0;
+  let current = initial;
+  card.dataset.stars = String(current);
   const draw = () => {
     root.innerHTML = Array.from({length: 5}, (_, i) =>
       `<span class="star${i < current ? ' on' : ''}" data-i="${i+1}">★</span>`
@@ -605,8 +653,9 @@ function initStars(card, scope, resultId) {
   });
 }
 
-function initNotes(scope, resultId) {
+function initNotes(scope, resultId, initial = "") {
   const ta = $('.notes', scope);
+  if (initial) ta.value = initial;
   let timer = null;
   ta.addEventListener("input", () => {
     clearTimeout(timer);
