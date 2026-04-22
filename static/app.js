@@ -178,13 +178,6 @@ function refreshPassagePill() {
 
 // ──────────── Voice popover ────────────
 
-const VOICE_PRESETS = {
-  "All female":  v => v.gender === "f",
-  "All male":    v => v.gender === "m",
-  "UK only":     v => v.accent === "uk",
-  "US only":     v => v.accent === "us",
-};
-
 function openVoicePopover(anchor) {
   closeAllPopovers();
   const pop = document.createElement("div");
@@ -194,9 +187,6 @@ function openVoicePopover(anchor) {
       <input type="search" placeholder="Search voices…">
     </div>
     <div class="chip-row" data-filter-chips></div>
-    <div class="chip-row" data-presets>
-      <span class="chip-group-label">Quick picks</span>
-    </div>
     <div class="popover-body" data-voice-body></div>
     <div class="popover-footer">
       <span class="count" data-count>0 selected</span>
@@ -243,21 +233,11 @@ function openVoicePopover(anchor) {
     });
   });
 
-  // Presets
-  const presetRow = $('[data-presets]', pop);
-  Object.keys(VOICE_PRESETS).forEach(name => {
-    const el = document.createElement("span");
-    el.className = "chip";
-    el.textContent = name;
-    el.addEventListener("click", () => applyPreset(name));
-    presetRow.appendChild(el);
-  });
-
   const body = $('[data-voice-body]', pop);
   const matches = (voice, engine) => {
     const term = search.value.trim().toLowerCase();
     if (term) {
-      const hay = `${voice.label} ${voice.id} ${voice.notes || ""}`.toLowerCase();
+      const hay = `${voice.label} ${voice.id} ${voice.notes || ""} ${voice.user_notes || ""}`.toLowerCase();
       if (!hay.includes(term)) return false;
     }
     if (filters.engine.size && !filters.engine.has(engine)) return false;
@@ -276,17 +256,25 @@ function openVoicePopover(anchor) {
       const cards = visible.map(v => {
         const key = `${group.engine}|${v.id}`;
         const on = State.selectedVoices.has(key);
-        return `<div class="voice-pick ${on ? 'on' : ''}" data-key="${key}">
-          <input type="checkbox" ${on ? 'checked' : ''} tabindex="-1" aria-hidden="true">
-          <div class="label">${escapeHtml(v.label)}</div>
-          <div class="voice-id">${escapeHtml(v.id)}</div>
+        const desc = v.notes || "";
+        const userNotes = v.user_notes || "";
+        return `<div class="voice-pick ${on ? 'on' : ''}" data-key="${key}"${desc ? ` title="${escapeHtml(desc)}"` : ''}>
+          <div class="voice-pick-row">
+            <input type="checkbox" ${on ? 'checked' : ''} tabindex="-1" aria-hidden="true">
+            <div class="label">${escapeHtml(v.label)}</div>
+            <div class="voice-id">${escapeHtml(v.id)}</div>
+          </div>
+          <textarea class="voice-user-notes" data-engine="${escapeHtml(group.engine)}" data-voice-id="${escapeHtml(v.id)}"
+            placeholder="Add notes…" rows="1">${escapeHtml(userNotes)}</textarea>
         </div>`;
       }).join("");
       return `<div class="engine-heading">${capitalise(group.engine)}</div><div class="voice-grid">${cards}</div>`;
     }).join("");
     body.innerHTML = sections || `<p class="empty-hint" style="padding:24px;text-align:center">No voices match.</p>`;
     $$('.voice-pick[data-key]', body).forEach(el => {
-      el.addEventListener("click", () => {
+      el.addEventListener("click", (e) => {
+        // Clicking inside the notes textarea must not toggle selection.
+        if (e.target.classList.contains("voice-user-notes")) return;
         const key = el.dataset.key;
         if (State.selectedVoices.has(key)) State.selectedVoices.delete(key);
         else State.selectedVoices.add(key);
@@ -298,25 +286,12 @@ function openVoicePopover(anchor) {
         refreshVoicesPill();
       });
     });
+    $$('.voice-user-notes', body).forEach(ta => initVoiceNote(ta));
     updateCount();
   };
 
   const updateCount = () => {
     $('[data-count]', pop).textContent = `${State.selectedVoices.size} selected`;
-  };
-
-  const applyPreset = (name) => {
-    const fn = VOICE_PRESETS[name];
-    for (const g of State.voicesByEngine) {
-      if (!g.available) continue;
-      for (const v of g.voices) {
-        const key = `${g.engine}|${v.id}`;
-        if (fn(v)) State.selectedVoices.add(key);
-      }
-    }
-    render();
-    refreshVoicesPill();
-    renderAdvancedPanel();
   };
 
   search.addEventListener("input", render);
@@ -335,6 +310,26 @@ function openVoicePopover(anchor) {
 function refreshVoicesPill() {
   const pill = $('[data-pill-value]', $("#btn-voices"));
   pill.textContent = `${State.selectedVoices.size} selected`;
+}
+
+function initVoiceNote(ta) {
+  ta.addEventListener("click", e => e.stopPropagation());
+  let timer = null;
+  ta.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const engine = ta.dataset.engine;
+      const voiceId = ta.dataset.voiceId;
+      const notes = ta.value.trim();
+      await api(`/api/voices/${engine}/${voiceId}/notes`, {
+        method: "PUT",
+        body: JSON.stringify({ notes: notes || null }),
+      });
+      const group = State.voicesByEngine.find(g => g.engine === engine);
+      const v = group?.voices.find(v => v.id === voiceId);
+      if (v) v.user_notes = notes;
+    }, 500);
+  });
 }
 
 // ──────────── Advanced panel ────────────
@@ -545,6 +540,8 @@ function addHydratedCard(r) {
   card.dataset.voiceId = r.voice_id;
   card.dataset.created = String(r.generated_at || Date.now());
   card.dataset.stars = String(r.stars || 0);
+  card.dataset.params = JSON.stringify(r.params || {});
+  card.dataset.speed = String(r.speed ?? 1.0);
   card.innerHTML = `
     <div class="card-header">
       <div class="card-title">
@@ -574,6 +571,8 @@ function addPlaceholderCard(jobId, jobSpec) {
   card.dataset.voiceId = jobSpec.voice_id;
   card.dataset.created = String(Date.now());
   card.dataset.stars = "0";
+  card.dataset.params = JSON.stringify(jobSpec.params || {});
+  card.dataset.speed = String(jobSpec.speed ?? 1.0);
   card.innerHTML = `
     <div class="card-header">
       <div class="card-title">
@@ -620,12 +619,18 @@ function fillCard(card, job, options = {}) {
   const slotOptions = State.castingSlots.map(s =>
     `<option value="${s.slot}">${escapeHtml(s.label)}</option>`
   ).join("");
+  const params = (() => {
+    try { return JSON.parse(card.dataset.params || "{}"); } catch { return {}; }
+  })();
+  const speed = parseFloat(card.dataset.speed || "1.0");
+  const paramsRow = renderParamsChips(card.dataset.engine, params, speed);
   body.innerHTML = `
     <audio controls preload="none" src="${job.audio_url}"></audio>
+    ${paramsRow}
     <div class="speed-row">
       <span>Speed</span>
-      <input type="range" min="0.7" max="1.3" step="0.05" value="1.0" data-speed>
-      <span data-speed-label>1.00×</span>
+      <input type="range" min="0.7" max="1.3" step="0.05" value="${speed}" data-speed>
+      <span data-speed-label>${speed.toFixed(2)}×</span>
       <button class="ghost" data-regen type="button" title="Regenerate at this speed">↻</button>
     </div>
     <div class="stars" data-stars>${"☆".repeat(5)}</div>
@@ -645,6 +650,33 @@ function fillCard(card, job, options = {}) {
   initSpeedRegen(card, body, job);
   initAssignSelect(body, job.result_id);
   initDeleteBtn(card, body, job.result_id);
+}
+
+const PARAM_LABEL_OVERRIDES = {
+  temperature: "T",
+  top_p: "top_p",
+  top_k: "top_k",
+  repetition_penalty: "rep_pen",
+  repetition_context_size: "rep_ctx",
+  num_generations: "n",
+  trailing_silence: "silence",
+};
+
+function renderParamsChips(engine, params, speed) {
+  const chips = [];
+  if (typeof speed === "number" && Math.abs(speed - 1.0) > 1e-6) {
+    chips.push(`<span class="param-chip">speed ${speed.toFixed(2)}</span>`);
+  }
+  for (const [k, v] of Object.entries(params || {})) {
+    if (v === null || v === undefined || v === "") continue;
+    const label = PARAM_LABEL_OVERRIDES[k] || k;
+    const formatted = typeof v === "number"
+      ? (Number.isInteger(v) ? String(v) : v.toFixed(2))
+      : escapeHtml(String(v));
+    chips.push(`<span class="param-chip" title="${escapeHtml(k)} = ${escapeHtml(String(v))}">${escapeHtml(label)} ${formatted}</span>`);
+  }
+  if (!chips.length) return "";
+  return `<div class="params-row">${chips.join("")}</div>`;
 }
 
 function initDeleteBtn(card, scope, resultId) {

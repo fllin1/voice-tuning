@@ -52,6 +52,14 @@ CREATE TABLE IF NOT EXISTS casting (
     notes TEXT,
     updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS voice_notes (
+    engine TEXT NOT NULL,
+    voice_id TEXT NOT NULL,
+    notes TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (engine, voice_id)
+);
 """
 
 
@@ -277,6 +285,31 @@ def get_casting() -> dict[str, dict | None]:
     with connect() as conn:
         rows = conn.execute("SELECT * FROM casting").fetchall()
     return {r["character_slot"]: dict(r) for r in rows}
+
+
+# ---------- voice notes ----------
+
+def get_voice_notes() -> dict[tuple[str, str], str]:
+    with connect() as conn:
+        rows = conn.execute("SELECT engine, voice_id, notes FROM voice_notes").fetchall()
+    return {(r["engine"], r["voice_id"]): r["notes"] for r in rows if r["notes"]}
+
+
+def upsert_voice_note(engine: str, voice_id: str, notes: str | None) -> None:
+    with connect() as conn:
+        if not notes:
+            conn.execute(
+                "DELETE FROM voice_notes WHERE engine = ? AND voice_id = ?",
+                (engine, voice_id),
+            )
+            return
+        conn.execute(
+            "INSERT INTO voice_notes (engine, voice_id, notes, updated_at) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(engine, voice_id) DO UPDATE SET notes = excluded.notes, "
+            "updated_at = excluded.updated_at",
+            (engine, voice_id, notes, now_ms()),
+        )
 
 
 def upsert_casting(slot: str, result_id: int | None, notes: str | None) -> None:

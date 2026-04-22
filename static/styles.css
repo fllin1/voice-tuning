@@ -124,8 +124,51 @@ main { padding: 0; }
 }
 .ghost:hover { background: var(--surface-hover); color: var(--fg); }
 .ghost[aria-expanded="true"] { color: var(--accent); }
-.ghost[aria-expanded="true"] .adv-caret { transform: rotate(90deg); display: inline-block; }
-.adv-caret { display: inline-block; transition: transform 120ms; }
+
+.adv-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px var(--sp-3);
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.adv-toggle:hover { background: var(--surface-hover); color: var(--fg); border-color: var(--muted); }
+.adv-toggle[aria-expanded="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.adv-icon {
+  width: 14px; height: 14px;
+  background: currentColor;
+  -webkit-mask: linear-gradient(currentColor 0 0) center/14px 2px no-repeat,
+                linear-gradient(currentColor 0 0) center/2px 14px no-repeat,
+                linear-gradient(currentColor 0 0) left 1px center/4px 4px no-repeat,
+                linear-gradient(currentColor 0 0) right 1px center/4px 4px no-repeat;
+          mask: linear-gradient(currentColor 0 0) center/14px 2px no-repeat,
+                linear-gradient(currentColor 0 0) center/2px 14px no-repeat;
+  /* Simple sliders glyph: three horizontal lines */
+  background:
+    linear-gradient(currentColor, currentColor) 0 2px / 14px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 6px / 14px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 10px / 14px 2px no-repeat;
+}
+.adv-chevron {
+  display: inline-block;
+  font-size: 16px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 160ms ease;
+}
+.adv-toggle[aria-expanded="true"] .adv-chevron { transform: rotate(90deg); }
 
 .primary {
   background: var(--accent);
@@ -350,6 +393,23 @@ main { padding: 0; }
 .speed-row { display: flex; align-items: center; gap: var(--sp-2); font-size: 12px; color: var(--muted); }
 .speed-row input[type=range] { flex: 1; accent-color: var(--accent); }
 
+.params-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 11px;
+}
+.param-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--surface-hover);
+  color: var(--muted);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
 /* ──────────── A/B dock + drawer ──────────── */
 .ab-dock {
   position: fixed;
@@ -515,8 +575,8 @@ main { padding: 0; }
 }
 .voice-pick {
   display: flex;
-  align-items: center;
-  gap: var(--sp-2);
+  flex-direction: column;
+  gap: var(--sp-1);
   padding: var(--sp-2) var(--sp-3);
   background: var(--bg);
   border: 1px solid var(--border);
@@ -526,8 +586,31 @@ main { padding: 0; }
 }
 .voice-pick:hover { background: var(--surface-hover); }
 .voice-pick.on { background: var(--accent-soft); border-color: var(--accent); }
+.voice-pick-row { display: flex; align-items: center; gap: var(--sp-2); width: 100%; }
 .voice-pick .label { flex: 1; font-weight: 500; }
 .voice-pick .voice-id { color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+.voice-user-notes {
+  width: 100%;
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  resize: vertical;
+  min-height: 22px;
+  max-height: 80px;
+  cursor: text;
+}
+.voice-user-notes:focus {
+  outline: none;
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--bg-elev);
+  color: var(--fg);
+}
+.voice-pick.on .voice-user-notes { color: var(--fg); border-color: var(--accent); }
 
 .engine-heading { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: var(--sp-3) 0 var(--sp-1); }
 .engine-heading.disabled { color: var(--bad); opacity: 0.7; }
