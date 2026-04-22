@@ -201,6 +201,35 @@ def list_results_for_slot(slot: str) -> list[dict]:
     return [_result_row_to_dict(r) for r in rows]
 
 
+def delete_result(result_id: int) -> str | None:
+    """Delete a result, detach casting + ab_matches references. Return its audio_hash."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT audio_hash FROM results WHERE id = ?", (result_id,)
+        ).fetchone()
+        if not row:
+            return None
+        audio_hash = row["audio_hash"]
+        conn.execute(
+            "UPDATE casting SET result_id = NULL, updated_at = ? WHERE result_id = ?",
+            (now_ms(), result_id),
+        )
+        conn.execute(
+            "DELETE FROM ab_matches WHERE result_a_id = ? OR result_b_id = ?",
+            (result_id, result_id),
+        )
+        conn.execute("DELETE FROM results WHERE id = ?", (result_id,))
+    return audio_hash
+
+
+def count_results_with_hash(audio_hash: str) -> int:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM results WHERE audio_hash = ?", (audio_hash,)
+        ).fetchone()
+    return row["n"]
+
+
 def _result_row_to_dict(row: sqlite3.Row) -> dict:
     d = dict(row)
     d["params"] = json.loads(d["params_json"]) if d.get("params_json") else {}

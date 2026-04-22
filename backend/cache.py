@@ -40,3 +40,11 @@ def write(audio_hash: str, wav_bytes: bytes) -> Path:
 
 def read(audio_hash: str) -> bytes:
     return path_for(audio_hash).read_bytes()
+
+
+def delete(audio_hash: str) -> bool:
+    p = path_for(audio_hash)
+    if p.exists():
+        p.unlink()
+        return True
+    return False

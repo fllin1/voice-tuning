@@ -23,3 +23,11 @@ def test_write_has_read_roundtrip():
     assert cache.has(h)
     assert cache.read(h) == b"RIFF...fake wav..."
     assert cache.path_for(h).suffix == ".wav"
+
+
+def test_delete_unlinks_and_is_idempotent():
+    h = cache.compute_hash("v1", "af_heart", 1.0, None, "Delete me")
+    cache.write(h, b"bytes")
+    assert cache.delete(h) is True
+    assert not cache.has(h)
+    assert cache.delete(h) is False

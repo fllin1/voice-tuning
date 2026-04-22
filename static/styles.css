@@ -287,6 +287,29 @@ main { padding: 0; }
   color: var(--accent);
   font-weight: 500;
 }
+.card-actions .delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px var(--sp-2);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.card-actions .delete-btn:hover { color: var(--bad); border-color: var(--bad); }
+.card-actions .delete-btn.armed {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: #fff;
+  font-weight: 500;
+  padding: 4px var(--sp-3);
+}
+.card-actions .delete-btn:disabled { opacity: 0.6; cursor: progress; }
 .badge {
   font-size: 10px;
   padding: 2px 6px;

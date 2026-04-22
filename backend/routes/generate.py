@@ -138,3 +138,14 @@ def get_result(result_id: int) -> dict:
         raise HTTPException(404, "result not found")
     r["audio_url"] = f"/api/audio/{r['audio_hash']}.wav"
     return r
+
+
+@router.delete("/api/results/{result_id}")
+def delete_result(result_id: int) -> dict:
+    audio_hash = db.delete_result(result_id)
+    if not audio_hash:
+        raise HTTPException(404, "result not found")
+    audio_removed = False
+    if db.count_results_with_hash(audio_hash) == 0:
+        audio_removed = cache.delete(audio_hash)
+    return {"deleted": True, "audio_removed": audio_removed}

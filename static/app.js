@@ -636,6 +636,7 @@ function fillCard(card, job, options = {}) {
         ${slotOptions}
       </select>
       <button class="ab-stage-btn" data-ab type="button">+ A/B</button>
+      <button class="delete-btn" data-delete type="button" title="Delete">✕</button>
     </div>
   `;
   initStars(card, body, job.result_id, options.initialStars || 0);
@@ -643,6 +644,43 @@ function fillCard(card, job, options = {}) {
   initAbStageBtn(body, job, card);
   initSpeedRegen(card, body, job);
   initAssignSelect(body, job.result_id);
+  initDeleteBtn(card, body, job.result_id);
+}
+
+function initDeleteBtn(card, scope, resultId) {
+  const btn = $('[data-delete]', scope);
+  if (!btn) return;
+  let armTimer = null;
+  const disarm = () => {
+    btn.classList.remove("armed");
+    btn.textContent = "✕";
+    btn.title = "Delete";
+    if (armTimer) { clearTimeout(armTimer); armTimer = null; }
+  };
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (!btn.classList.contains("armed")) {
+      btn.classList.add("armed");
+      btn.textContent = "Delete?";
+      btn.title = "Click again to confirm";
+      armTimer = setTimeout(disarm, 3000);
+      return;
+    }
+    btn.disabled = true;
+    await api(`/api/results/${resultId}`, { method: "DELETE" });
+    // Drop from A/B staging if present
+    if (State.abPicks.includes(resultId)) {
+      State.abPicks = State.abPicks.filter(x => x !== resultId);
+      saveAbPicks();
+      refreshAbDock();
+    }
+    card.remove();
+    updateEmptyState();
+  });
+  // Click anywhere else on the page disarms the button.
+  document.addEventListener("click", (e) => {
+    if (btn.classList.contains("armed") && e.target !== btn) disarm();
+  }, true);
 }
 
 function initStars(card, scope, resultId, initial = 0) {
