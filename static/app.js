@@ -84,11 +84,6 @@ function initCmdBar() {
   $("#btn-passage").addEventListener("click", e => openPassagePopover(e.currentTarget));
   $("#btn-voices").addEventListener("click", e => openVoicePopover(e.currentTarget));
 
-  const speedInput = $("#speed-input");
-  speedInput.addEventListener("change", () => {
-    State.speed = parseFloat(speedInput.value) || 1.0;
-  });
-
   const advBtn = $("#btn-advanced");
   const advPanel = $("#advanced-panel");
   advBtn.setAttribute("aria-expanded", State.advancedOpen ? "true" : "false");
@@ -629,8 +624,8 @@ function fillCard(card, job, options = {}) {
     ${paramsRow}
     <div class="speed-row">
       <span>Speed</span>
-      <input type="range" min="0.7" max="1.3" step="0.05" value="${speed}" data-speed>
-      <span data-speed-label>${speed.toFixed(2)}×</span>
+      <input type="range" min="0.5" max="2.0" step="0.05" value="${speed}" data-speed>
+      <input type="number" min="0.5" max="2.0" step="0.05" value="${speed.toFixed(2)}" data-speed-num>
       <button class="ghost" data-regen type="button" title="Regenerate at this speed">↻</button>
     </div>
     <div class="stars" data-stars>${"☆".repeat(5)}</div>
@@ -806,10 +801,19 @@ function initAssignSelect(scope, resultId) {
 
 function initSpeedRegen(card, body, job) {
   const slider = $('[data-speed]', body);
-  const label = $('[data-speed-label]', body);
+  const numInput = $('[data-speed-num]', body);
   const btn = $('[data-regen]', body);
-  slider.addEventListener("input", () => {
-    label.textContent = `${parseFloat(slider.value).toFixed(2)}×`;
+  const clamp = v => Math.min(2.0, Math.max(0.5, v));
+  const setBoth = (v, src) => {
+    const c = clamp(v);
+    if (src !== "slider") slider.value = String(c);
+    if (src !== "num")    numInput.value = c.toFixed(2);
+  };
+  slider.addEventListener("input", () => setBoth(parseFloat(slider.value), "slider"));
+  numInput.addEventListener("change", () => {
+    const v = parseFloat(numInput.value);
+    if (Number.isNaN(v)) { numInput.value = slider.value; return; }
+    setBoth(v, "num");
   });
   btn.addEventListener("click", async () => {
     const speed = parseFloat(slider.value);
