@@ -5,36 +5,25 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from .. import db
+from .. import characters, db
 
 router = APIRouter()
-
-# 8 voice slots for Classroom of the Elite
-COTE_SLOTS = [
-    {"slot": "ayanokoji", "label": "Ayanokōji Kiyotaka"},
-    {"slot": "horikita", "label": "Horikita Suzune"},
-    {"slot": "kushida_public", "label": "Kushida Kikyō (public)"},
-    {"slot": "kushida_private", "label": "Kushida Kikyō (private)"},
-    {"slot": "karuizawa", "label": "Karuizawa Kei"},
-    {"slot": "ichinose", "label": "Ichinose Honami"},
-    {"slot": "sakayanagi", "label": "Sakayanagi Arisu"},
-    {"slot": "ryuen", "label": "Ryūen Kakeru"},
-]
 
 
 class CastingIn(BaseModel):
     result_id: int | None = None
     notes: str | None = None
+    reason: str | None = None
 
 
 @router.get("/api/casting/slots")
 def list_slots() -> dict:
-    return {"slots": COTE_SLOTS}
+    return {"slots": characters.as_dicts()}
 
 
 @router.get("/api/casting/results/{slot}")
 def list_results_for_slot(slot: str) -> dict:
-    if slot not in {s["slot"] for s in COTE_SLOTS}:
+    if not characters.is_valid_slot(slot):
         raise HTTPException(400, f"unknown slot: {slot}")
     rows = db.list_results_for_slot(slot)
     for r in rows:
@@ -46,35 +35,57 @@ def list_results_for_slot(slot: str) -> dict:
 def list_casting() -> dict:
     state = db.get_casting()
     out = []
-    for slot in COTE_SLOTS:
-        entry = state.get(slot["slot"])
+    for c in characters.CHARACTERS:
+        entry = state.get(c.slot)
         result = db.get_result(entry["result_id"]) if entry and entry["result_id"] else None
         if result:
             result["audio_url"] = f"/api/audio/{result['audio_hash']}.wav"
-        out.append({**slot, "result": result, "notes": entry["notes"] if entry else None})
+        out.append({
+            "slot": c.slot,
+            "label": c.label,
+            "portrait_key": c.portrait_key,
+            "variant": c.variant,
+            "result": result,
+            "notes": entry["notes"] if entry else None,
+        })
     return {"slots": out}
 
 
 @router.put("/api/casting/{slot}")
 def upsert_casting(slot: str, body: CastingIn) -> dict:
-    if slot not in {s["slot"] for s in COTE_SLOTS}:
+    if not characters.is_valid_slot(slot):
         raise HTTPException(400, f"unknown slot: {slot}")
     if body.result_id is not None and not db.get_result(body.result_id):
         raise HTTPException(404, "result not found")
+
+    current = db.get_casting().get(slot)
+    prev_result_id = current["result_id"] if current else None
+    cast_changed = prev_result_id != body.result_id
+
     db.upsert_casting(slot, body.result_id, body.notes)
+    if cast_changed:
+        db.append_casting_history(slot, body.result_id, body.reason)
     return {"ok": True}
+
+
+@router.get("/api/casting/history/{slot}")
+def get_history(slot: str, limit: int = 3) -> dict:
+    if not characters.is_valid_slot(slot):
+        raise HTTPException(400, f"unknown slot: {slot}")
+    return {"history": db.list_casting_history(slot, limit)}
 
 
 @router.get("/api/casting/export")
 def export_casting():
     state = db.get_casting()
     payload = {"exported_at": int(time.time()), "cast": []}
-    for slot in COTE_SLOTS:
-        entry = state.get(slot["slot"])
+    for c in characters.CHARACTERS:
+        entry = state.get(c.slot)
         result = db.get_result(entry["result_id"]) if entry and entry["result_id"] else None
         payload["cast"].append({
-            "slot": slot["slot"],
-            "label": slot["label"],
+            "slot": c.slot,
+            "label": c.label,
+            "variant": c.variant,
             "engine": result["engine"] if result else None,
             "voice_id": result["voice_id"] if result else None,
             "speed": result["speed"] if result else None,

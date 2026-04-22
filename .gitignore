@@ -17,5 +17,5 @@ audio_cache/
 
 # Playwright MCP session artifacts (screenshots + snapshots)
 .playwright-mcp/
-*.png
+/*.png
 
