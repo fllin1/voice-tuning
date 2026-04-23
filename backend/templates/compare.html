@@ -16,69 +16,23 @@
 
 <div class="vt-app" x-data="vtApp" x-init="init()" @keydown.window="onKey($event)">
 
-  <!-- ──────── Command bar ──────── -->
-  <header class="vt-cmdbar">
-    <button class="vt-pill" @click="popover.open = (popover.open === 'passage' ? null : 'passage')" :aria-expanded="popover.open === 'passage'">
-      <span class="vt-pill-label">Passage</span>
-      <span class="vt-pill-value" x-text="passageLabel()"></span>
-      <span class="vt-pill-caret">▾</span>
-    </button>
-
-    <button class="vt-pill" @click="popover.open = (popover.open === 'voices' ? null : 'voices')" :aria-expanded="popover.open === 'voices'">
-      <span class="vt-pill-label">Voices</span>
-      <span class="vt-pill-value" x-text="voicesLabel()"></span>
-      <span class="vt-pill-caret">▾</span>
-    </button>
-
-    <button class="vt-pill vt-pill-toggle" :class="{ on: advancedOpen }" @click="toggleAdvanced()">
-      <span class="vt-pill-label">Advanced</span>
-      <span class="vt-pill-caret" x-text="advancedOpen ? '−' : '+'"></span>
-    </button>
-
+  <!-- ──────── View controls (list display, not generation) ──────── -->
+  <nav class="vt-viewbar" aria-label="View controls">
     <button class="vt-chip" :class="{ on: filterMin }" @click="filterMin = !filterMin" title="Show only ≥4★">
       ≥4★
     </button>
-
-    <div class="vt-spacer"></div>
-
-    <button class="vt-primary" @click="onGenerate()" :disabled="generating" x-text="generating ? 'Generating…' : 'Generate batch'"></button>
-  </header>
-
-  <!-- ──────── Advanced params panel ──────── -->
-  <section class="vt-advanced" x-show="advancedOpen" x-cloak>
-    <template x-for="engine in activeParamSchemas()" :key="engine.engine">
-      <div class="vt-adv-group">
-        <div class="vt-adv-header">
-          <span x-text="engine.engine"></span>
-          <button class="vt-ghost vt-xs" @click="resetEngineParams(engine.engine)">reset</button>
-        </div>
-        <template x-for="p in engine.param_schema" :key="p.key">
-          <div class="vt-adv-row">
-            <label x-text="p.label || p.key"></label>
-            <template x-if="p.type === 'number' || p.type === 'int' || p.type === 'float'">
-              <div class="vt-adv-inputs">
-                <input type="range" :min="p.min" :max="p.max" :step="p.step || 0.01"
-                  :value="advancedValues[engine.engine]?.[p.key] ?? p.default"
-                  @input="setParam(engine.engine, p.key, $event.target.value)">
-                <input type="number" class="vt-num" :min="p.min" :max="p.max" :step="p.step || 0.01"
-                  :value="advancedValues[engine.engine]?.[p.key] ?? p.default"
-                  @input="setParam(engine.engine, p.key, $event.target.value)">
-              </div>
-            </template>
-            <template x-if="p.type === 'string' || p.type === 'text'">
-              <textarea class="vt-text"
-                :placeholder="p.placeholder || ''"
-                @input="setParam(engine.engine, p.key, $event.target.value)"
-                x-text="advancedValues[engine.engine]?.[p.key] ?? p.default ?? ''"></textarea>
-            </template>
-          </div>
-        </template>
-      </div>
-    </template>
-    <div class="vt-adv-empty" x-show="activeParamSchemas().length === 0">
-      Select a voice with tunable parameters to see controls.
-    </div>
-  </section>
+    <span class="vt-viewbar-sep" aria-hidden="true"></span>
+    <button class="vt-ghost" @click="collapseAll()" title="Fold all character sections (gg)">Fold all</button>
+    <span class="vt-viewbar-sep" aria-hidden="true"></span>
+    <button class="vt-ghost" @click="expandAll()" title="Open all character sections (G)">Open all</button>
+    <span class="vt-viewbar-sep" aria-hidden="true"></span>
+    <span class="vt-viewbar-stat">
+      <span x-text="characters.filter(c => castedVoice(c.slot)).length"></span>
+      <span class="vt-viewbar-stat-sep">/</span>
+      <span x-text="characters.length"></span>
+      cast
+    </span>
+  </nav>
 
   <!-- ──────── Layout: main + rail ──────── -->
   <div class="vt-layout">
@@ -86,7 +40,7 @@
     <main class="vt-main">
       <template x-for="char in characters" :key="char.slot">
         <section class="vt-group" :class="{ active: activeSlot === char.slot, collapsed: collapsed.has(char.slot) }" :id="'group-' + char.slot">
-          <header class="vt-group-header" @click="toggleGroup(char.slot)" @mouseenter="activeSlot = char.slot">
+          <header class="vt-group-header" @click="selectSlot(char.slot)">
             <span class="vt-caret" x-text="collapsed.has(char.slot) ? '▸' : '▾'"></span>
             <span class="vt-group-label" x-text="char.label"></span>
             <span class="vt-group-variant" x-show="char.variant" x-text="char.variant"></span>
@@ -94,79 +48,77 @@
             <span class="vt-group-uncast" x-show="!castedVoice(char.slot)">uncast</span>
             <span class="vt-group-meta">
               <span x-text="slotStarSummary(char.slot)"></span>
-              <span class="vt-group-count" x-text="resultsForSlot(char.slot).length + ' samples'"></span>
+              <span class="vt-group-count" x-text="groupedResults(char.slot).length + ' voices'"></span>
             </span>
           </header>
 
           <div class="vt-group-body" x-show="!collapsed.has(char.slot)">
 
-            <div class="vt-shortlist" x-show="(shortlists[char.slot] || []).length > 0">
-              <div class="vt-shortlist-label">Shortlist</div>
-              <div class="vt-shortlist-strip">
-                <template x-for="r in shortlists[char.slot] || []" :key="r.id">
-                  <div class="vt-short-mini" @click="playResult(r)">
-                    <span class="vt-short-voice" x-text="r.voice_id"></span>
-                    <span class="vt-short-engine" x-text="r.engine"></span>
-                    <span class="vt-short-stars" x-text="'★'.repeat(r.stars || 0)"></span>
-                  </div>
-                </template>
-              </div>
-            </div>
-
             <div class="vt-cards">
-              <template x-for="r in visibleResults(char.slot)" :key="r.id">
-                <article class="vt-card"
-                  :class="{ cast: castedResultId(char.slot) === r.id, shortlisted: isShortlisted(char.slot, r.id) }"
-                  :data-result-id="r.id"
-                  @click="activeSlot = char.slot">
-                  <div class="vt-card-head">
-                    <div class="vt-card-title">
-                      <strong x-text="r.voice_id"></strong>
-                      <span class="vt-card-engine" x-text="r.engine"></span>
-                    </div>
-                    <div class="vt-card-badges">
-                      <span class="vt-shortlist-badge" x-show="isShortlisted(char.slot, r.id)" title="Shortlisted">★</span>
-                      <span class="vt-cast-badge" x-show="castedResultId(char.slot) === r.id" title="Cast">CAST</span>
-                    </div>
+              <template x-for="g in groupedResults(char.slot)" :key="g.key">
+                <article class="vt-voice-card"
+                  :class="{ cast: g.samples.some(s => castedResultId(char.slot) === s.id) }"
+                  :data-group-key="g.key">
+                  <div class="vt-voice-head">
+                    <strong x-text="g.voice_id"></strong>
+                    <span class="vt-card-engine" x-text="g.engine"></span>
+                    <span class="vt-cast-badge"
+                      x-show="g.samples.some(s => castedResultId(char.slot) === s.id)" title="Cast">CAST</span>
                   </div>
 
-                  <button class="vt-play" @click="playResult(r)" x-text="currentAudioId === r.id && audioPlaying ? '❚❚' : '▶'"></button>
+                  <div class="vt-voice-params" x-html="paramChipsForGroup(g)"
+                    x-show="Object.keys(g.params).length > 0"></div>
 
-                  <div class="vt-chips" x-html="paramChips(r)"></div>
+                  <div class="vt-voice-plays">
+                    <template x-for="s in g.samples" :key="s.id">
+                      <button class="vt-play vt-play-sample"
+                        :class="{ playing: currentAudioId === s.id && audioPlaying }"
+                        @click="playResult(s)"
+                        :title="passageTitleFor(s) + ' · ' + (+s.speed).toFixed(2) + '×'">
+                        <span x-text="currentAudioId === s.id && audioPlaying ? '❚❚' : '▶'"></span>
+                        <span class="vt-play-speed" x-text="(+s.speed).toFixed(2) + '×'"></span>
+                      </button>
+                    </template>
+                  </div>
 
-                  <div class="vt-stars" :data-result-id="r.id">
+                  <div class="vt-stars">
                     <template x-for="n in [1,2,3,4,5]" :key="n">
-                      <span class="vt-star" :class="{ on: (r.stars || 0) >= n }" @click="setStars(r, n)" x-text="(r.stars || 0) >= n ? '★' : '☆'"></span>
+                      <span class="vt-star" :class="{ on: (g.stars || 0) >= n }"
+                        @click="setVoiceStars(char.slot, g, n)"
+                        x-text="(g.stars || 0) >= n ? '★' : '☆'"></span>
                     </template>
                   </div>
 
                   <textarea class="vt-notes" placeholder="Notes…"
-                    @input.debounce.500ms="saveNotes(r, $event.target.value)"
-                    x-text="r.notes || ''"></textarea>
+                    :value="g.notes || ''"
+                    @input.debounce.500ms="saveVoiceNotes(char.slot, g, $event.target.value)"></textarea>
 
-                  <div class="vt-tag-row">
-                    <template x-for="t in (r.tags || [])" :key="t">
-                      <span class="vt-tag" @click.stop="removeTag(r, t)" title="Click to remove">#<span x-text="t"></span></span>
-                    </template>
-                    <input class="vt-tag-input" placeholder="+tag"
-                      @keydown.enter.prevent="if ($event.target.value.trim()) { addTag(r, $event.target.value.trim()); $event.target.value = ''; }"
-                      @keydown.backspace="if (!$event.target.value && (r.tags || []).length) { removeTag(r, r.tags[r.tags.length - 1]); }">
+                  <div class="vt-voice-speed">
+                    <label class="vt-mini">speed</label>
+                    <input type="range" min="0.5" max="2" step="0.05"
+                      :value="cardSpeed(g)"
+                      @input="setCardSpeed(g, $event.target.value)">
+                    <span class="vt-mini vt-voice-speed-val" x-text="(+cardSpeed(g)).toFixed(2) + '×'"></span>
+                    <button class="vt-ghost vt-xs"
+                      :disabled="regenerating === g.key || !g.samples[0]?.passage_id"
+                      @click="regenerateAtSpeed(char.slot, g)"
+                      x-text="regenerating === g.key ? '…' : 'Regenerate'"></button>
                   </div>
 
                   <div class="vt-card-actions">
-                    <button class="vt-ghost vt-cast-btn" @click.stop="castAs(r, char.slot)"
-                      x-text="castedResultId(char.slot) === r.id ? 'Unassign' : 'Cast as ' + char.label"></button>
-                    <button class="vt-ghost vt-xs" @click.stop="toggleShortlist(r, char.slot)"
-                      x-text="isShortlisted(char.slot, r.id) ? '★ listed' : '☆ shortlist'"></button>
-                    <button class="vt-ghost vt-xs" @click.stop="validateAcrossPassages(r, char.slot)" title="Generate this voice across all passages for this slot">all passages</button>
-                    <button class="vt-ghost vt-xs vt-danger-btn" :class="{ armed: deleteArmed === r.id }"
-                      @click.stop="confirmDelete(r)" x-text="deleteArmed === r.id ? 'confirm?' : '✕'"></button>
+                    <button class="vt-ghost vt-cast-btn"
+                      @click.stop="castAs(g.samples[0], char.slot)"
+                      x-text="g.samples.some(s => castedResultId(char.slot) === s.id) ? 'Unassign' : 'Cast as ' + char.label"></button>
+                    <button class="vt-ghost vt-xs vt-danger-btn"
+                      :class="{ armed: deleteArmed === g.key }"
+                      @click.stop="confirmDeleteGroup(char.slot, g)"
+                      x-text="deleteArmed === g.key ? 'confirm?' : '✕'"></button>
                   </div>
                 </article>
               </template>
 
-              <div class="vt-empty-group" x-show="visibleResults(char.slot).length === 0">
-                <span x-text="filterMin ? 'No ≥4★ samples yet.' : 'No audition yet for ' + char.label + '.'"></span>
+              <div class="vt-empty-group" x-show="groupedResults(char.slot).length === 0">
+                <span x-text="filterMin ? 'No ≥4★ voices yet.' : 'No audition yet for ' + char.label + '.'"></span>
               </div>
             </div>
 
@@ -228,26 +180,6 @@
           <div class="vt-rail-uncast" x-show="!castForActive()">No voice cast yet.</div>
         </div>
 
-        <div class="vt-rail-shortlist" x-show="(shortlists[activeSlot] || []).length > 0">
-          <div class="vt-rail-sub">Shortlist (<span x-text="(shortlists[activeSlot] || []).length"></span>)</div>
-          <template x-for="r in (shortlists[activeSlot] || []).slice(0, 3)" :key="r.id">
-            <div class="vt-rail-short" @click="playResult(r)">
-              <span x-text="r.voice_id"></span>
-              <span class="vt-mini" x-text="r.engine"></span>
-              <span class="vt-mini" x-text="'★'.repeat(r.stars || 0)"></span>
-            </div>
-          </template>
-        </div>
-
-        <div class="vt-rail-history" x-show="(castingHistory[activeSlot] || []).length > 0">
-          <div class="vt-rail-sub">Recent swaps</div>
-          <template x-for="h in (castingHistory[activeSlot] || []).slice(0, 3)" :key="h.id">
-            <div class="vt-rail-swap">
-              <span x-text="h.voice_id || '(unset)'"></span>
-              <span class="vt-mini" x-text="fmtTime(h.changed_at)"></span>
-            </div>
-          </template>
-        </div>
       </div>
 
       <div class="vt-rail-overview">
@@ -265,52 +197,322 @@
 
   </div>
 
-  <!-- ──────── Passage popover ──────── -->
-  <div class="vt-popover" x-show="popover.open === 'passage'" x-cloak @click.outside="popover.open = null">
-    <div class="vt-pop-head">Passage</div>
-    <div class="vt-pop-list">
-      <template x-for="p in passages" :key="p.id">
-        <button class="vt-pop-item" :class="{ on: selectedPassageId === p.id }" @click="pickPassage(p.id)">
-          <span class="vt-mini" x-text="p.character_slot || '—'"></span>
-          <span x-text="p.title"></span>
-        </button>
-      </template>
-      <button class="vt-pop-item" :class="{ on: selectedPassageId === null && customText.length > 0 }" @click="customOpen = !customOpen">
-        <span class="vt-mini">custom</span>
-        <span x-text="customText ? 'Custom text…' : 'Paste custom text…'"></span>
-      </button>
-      <textarea x-show="customOpen" x-cloak class="vt-text vt-pop-custom"
-        placeholder="Paste text to audition…"
-        @input="customText = $event.target.value; selectedPassageId = null"
-        x-text="customText"></textarea>
-    </div>
-  </div>
-
-  <!-- ──────── Voice popover ──────── -->
-  <div class="vt-popover vt-popover-voices" x-show="popover.open === 'voices'" x-cloak @click.outside="popover.open = null">
-    <div class="vt-pop-head">
-      <input class="vt-text" type="search" placeholder="Search voices…" x-model="voiceQuery">
-      <span class="vt-mini" x-text="selectedVoices.size + ' picked'"></span>
-    </div>
-    <div class="vt-pop-body">
-      <template x-for="grp in engines" :key="grp.engine">
-        <div class="vt-voice-group">
-          <div class="vt-voice-engine">
-            <span x-text="grp.engine"></span>
-            <span class="vt-mini" x-show="!grp.available" x-text="grp.unavailable_reason || 'unavailable'"></span>
-          </div>
-          <template x-for="v in filteredVoices(grp)" :key="grp.engine + '|' + v.id">
-            <label class="vt-voice-row" :class="{ on: selectedVoices.has(grp.engine + '|' + v.id) }">
-              <input type="checkbox" :checked="selectedVoices.has(grp.engine + '|' + v.id)"
-                @change="toggleVoice(grp.engine, v.id)" :disabled="!grp.available">
-              <span class="vt-voice-label">
-                <strong x-text="v.label || v.id"></strong>
-                <span class="vt-mini" x-text="[v.gender, v.accent].filter(Boolean).join(' · ')"></span>
-              </span>
-            </label>
-          </template>
+  <!-- ──────── Generate wizard (3-step overlay) ──────── -->
+  <div class="vt-wizard-overlay" x-show="wizard.open" x-cloak
+    @keydown.window.escape="wizard.open && !wizard.submitting && closeWizard()"
+    @keydown.window.enter.prevent="wizard.open && !wizard.submitting && onWizardEnter($event)">
+    <div class="vt-wizard">
+      <header class="vt-wizard-head">
+        <div class="vt-wizard-stepper">
+          <button class="vt-wizard-step-chip" :class="{ on: wizard.step === 1 }"
+            @click="wizard.step = 1">1 · Passages</button>
+          <span class="vt-wizard-step-sep">›</span>
+          <button class="vt-wizard-step-chip" :class="{ on: wizard.step === 2 }"
+            @click="wizardStep1Ready() && (wizard.step = 2)"
+            :disabled="!wizardStep1Ready()">2 · Voices</button>
+          <span class="vt-wizard-step-sep">›</span>
+          <button class="vt-wizard-step-chip" :class="{ on: wizard.step === 3 }"
+            @click="(wizardStep1Ready() && wizardStep2Ready()) && (wizard.step = 3)"
+            :disabled="!wizardStep1Ready() || !wizardStep2Ready()">3 · Params &amp; Preview</button>
         </div>
-      </template>
+        <button class="vt-ghost vt-xs vt-wizard-close" @click="closeWizard()" title="Close (Esc)">✕</button>
+      </header>
+
+      <div class="vt-wizard-body">
+        <!-- Step 1 — Passages -->
+        <section x-show="wizard.step === 1">
+          <nav class="vt-filter-tabs" aria-label="Character filter">
+            <button class="vt-filter-tab" :class="{ on: wizard.filterSlot === null }"
+              @click="wizard.filterSlot = null">All</button>
+            <template x-for="char in characters" :key="char.slot">
+              <button class="vt-filter-tab" :class="{ on: wizard.filterSlot === char.slot }"
+                @click="wizard.filterSlot = char.slot">
+                <span x-text="char.label"></span>
+                <span class="vt-filter-tab-variant" x-show="char.variant" x-text="char.variant"></span>
+              </button>
+            </template>
+          </nav>
+          <div class="vt-wizard-actions-row">
+            <span class="vt-wizard-step-hint" x-text="wizard.filterSlot
+              ? filteredWizardPassages().length + ' passages for ' + (characters.find(c => c.slot === wizard.filterSlot)?.label || '')
+              : filteredWizardPassages().length + ' passages total'"></span>
+            <div class="vt-spacer"></div>
+            <button class="vt-ghost vt-sm" @click="selectAllFiltered()">Select all filtered</button>
+            <button class="vt-ghost vt-sm" @click="clearWizardSelection()"
+              x-show="wizard.selectedPassageIds.size > 0">Clear</button>
+          </div>
+
+          <ul class="vt-wizard-passages">
+            <template x-for="p in filteredWizardPassages()" :key="p.id">
+              <li class="vt-wizard-passage" :class="{ on: wizard.selectedPassageIds.has(p.id) }"
+                @click="toggleWizardPassage(p.id)">
+                <input type="checkbox" :checked="wizard.selectedPassageIds.has(p.id)"
+                  @click.stop="toggleWizardPassage(p.id)">
+                <div class="vt-wizard-passage-body">
+                  <div class="vt-wizard-passage-title">
+                    <span x-text="p.title"></span>
+                    <span class="vt-mini vt-wizard-slot-tag" x-show="p.character_slot"
+                      x-text="p.character_slot"></span>
+                  </div>
+                  <div class="vt-wizard-passage-preview" x-text="(p.text || '').slice(0, 140)"></div>
+                </div>
+              </li>
+            </template>
+            <li class="vt-wizard-empty" x-show="filteredWizardPassages().length === 0">
+              No passages match this filter.
+            </li>
+          </ul>
+
+          <details class="vt-wizard-custom">
+            <summary>Custom text…</summary>
+            <div class="vt-wizard-custom-body">
+              <textarea class="vt-text" placeholder="Paste custom text…"
+                x-model="wizard.customText" rows="3"></textarea>
+              <label class="vt-wizard-custom-slot">
+                <span>Target slot:</span>
+                <select x-model="wizard.customTextSlot">
+                  <option :value="null">— pick —</option>
+                  <template x-for="char in characters" :key="char.slot">
+                    <option :value="char.slot"
+                      x-text="char.label + (char.variant ? ' · ' + char.variant : '')"></option>
+                  </template>
+                </select>
+              </label>
+            </div>
+          </details>
+        </section>
+
+        <!-- Step 2 — Voices per character -->
+        <section x-show="wizard.step === 2">
+          <div class="vt-wizard-search-row">
+            <input class="vt-text vt-wizard-voice-search" type="search"
+              placeholder="Search voices (id, label, gender, accent, description)…"
+              x-model="wizard.voiceQuery">
+            <button class="vt-ghost vt-sm" @click="clearFacets()"
+              x-show="activeFacetCount() > 0 || wizard.voiceQuery">Clear filters</button>
+          </div>
+
+          <div class="vt-wizard-facets">
+            <div class="vt-wizard-facet-row">
+              <span class="vt-wizard-facet-label">Engine</span>
+              <template x-for="e in engines" :key="'eng:' + e.engine">
+                <button class="vt-filter-pill"
+                  :class="{ on: wizard.filterEngines[e.engine] }"
+                  :disabled="!e.available"
+                  @click="toggleFacet('filterEngines', e.engine)"
+                  x-text="e.engine"></button>
+              </template>
+            </div>
+            <div class="vt-wizard-facet-row" x-show="availableGenders().length">
+              <span class="vt-wizard-facet-label">Gender</span>
+              <template x-for="g in availableGenders()" :key="'gen:' + g">
+                <button class="vt-filter-pill"
+                  :class="{ on: wizard.filterGenders[g] }"
+                  @click="toggleFacet('filterGenders', g)"
+                  x-text="({f: 'female', m: 'male', n: 'neutral'})[g] || g"></button>
+              </template>
+            </div>
+            <div class="vt-wizard-facet-row" x-show="availableAccents().length">
+              <span class="vt-wizard-facet-label">Accent</span>
+              <template x-for="a in availableAccents()" :key="'acc:' + a">
+                <button class="vt-filter-pill"
+                  :class="{ on: wizard.filterAccents[a] }"
+                  @click="toggleFacet('filterAccents', a)"
+                  x-text="a"></button>
+              </template>
+            </div>
+            <div class="vt-wizard-facet-row" x-show="availableTraits().length">
+              <span class="vt-wizard-facet-label">Tone</span>
+              <template x-for="t in availableTraits()" :key="'tr:' + t">
+                <button class="vt-filter-pill"
+                  :class="{ on: wizard.filterTraits[t] }"
+                  @click="toggleFacet('filterTraits', t)"
+                  x-text="t"></button>
+              </template>
+            </div>
+          </div>
+
+          <template x-for="char in distinctWizardSlots()" :key="char.slot">
+            <div class="vt-wizard-slot-panel">
+              <header class="vt-wizard-slot-head">
+                <img :src="portraitSrc(char)" class="vt-wizard-slot-portrait" :alt="char.label">
+                <div class="vt-wizard-slot-info">
+                  <div class="vt-wizard-slot-label">
+                    <span x-text="char.label"></span>
+                    <span class="vt-mini" x-show="char.variant" x-text="char.variant"></span>
+                  </div>
+                  <div class="vt-wizard-slot-sub">
+                    <span x-text="wizardVoiceCount(char.slot)"></span>
+                    <span>&nbsp;voices selected</span>
+                  </div>
+                </div>
+              </header>
+
+              <!-- Presets -->
+              <div class="vt-wizard-presets" x-show="(presetVoices[char.slot] || []).length > 0">
+                <div class="vt-wizard-presets-label">Previously cast</div>
+                <template x-for="p in (presetVoices[char.slot] || [])"
+                  :key="char.slot + '|' + p.engine + '|' + p.voice_id">
+                  <button class="vt-chip vt-chip-preset"
+                    :class="{ on: isWizardVoiceSelected(char.slot, p.engine, p.voice_id) }"
+                    @click="addPresetVoice(char.slot, p.engine, p.voice_id)">
+                    <span x-text="p.voice_id"></span>
+                    <span class="vt-mini" x-text="p.engine"></span>
+                  </button>
+                </template>
+              </div>
+
+              <!-- Voice list per engine -->
+              <template x-for="grp in engines" :key="char.slot + ':' + grp.engine">
+                <div class="vt-wizard-engine-group" x-show="isEngineVisible(grp)">
+                  <div class="vt-wizard-engine-head"><span x-text="grp.engine"></span></div>
+                  <template x-for="v in wizardFilteredVoices(grp)" :key="grp.engine + '|' + v.id">
+                    <div class="vt-wizard-voice-row"
+                      :class="{ on: isWizardVoiceSelected(char.slot, grp.engine, v.id) }">
+                      <input type="checkbox"
+                        :checked="isWizardVoiceSelected(char.slot, grp.engine, v.id)"
+                        @change="toggleWizardVoice(char.slot, grp.engine, v.id)">
+                      <button class="vt-ghost vt-xs vt-wizard-sample"
+                        @click="playOrTryVoice(grp.engine, v.id)"
+                        :disabled="wizard.tryingOut === grp.engine + '|' + v.id"
+                        x-text="voiceSampleButtonLabel(grp.engine, v.id)"></button>
+                      <div class="vt-wizard-voice-body">
+                        <div class="vt-wizard-voice-title">
+                          <strong x-text="v.label || v.id"></strong>
+                          <span class="vt-mini"
+                            x-text="[v.gender === 'f' ? 'female' : v.gender === 'm' ? 'male' : v.gender, v.accent].filter(Boolean).join(' · ')"></span>
+                          <span class="vt-badge"
+                            x-show="isPreviouslyCast(char.slot, grp.engine, v.id)">cast before</span>
+                        </div>
+                        <div class="vt-wizard-voice-traits"
+                          x-show="(voiceProfileFor(grp.engine, v.id)?.traits || []).length">
+                          <template x-for="t in (voiceProfileFor(grp.engine, v.id)?.traits || [])" :key="t">
+                            <span class="vt-trait" x-text="t"></span>
+                          </template>
+                        </div>
+                        <textarea class="vt-wizard-desc" rows="2"
+                          placeholder="Describe this voice's personality / tone…"
+                          :value="voiceDescription(grp.engine, v.id)"
+                          @input="setVoiceDescriptionDraft(grp.engine, v.id, $event.target.value)"
+                          @blur="commitVoiceDescription(grp.engine, v.id)"></textarea>
+                      </div>
+                    </div>
+                  </template>
+                  <div class="vt-wizard-empty" x-show="wizardFilteredVoices(grp).length === 0">
+                    no voices match
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+
+          <div class="vt-wizard-empty" x-show="distinctWizardSlots().length === 0">
+            Go back and pick at least one passage.
+          </div>
+        </section>
+
+        <!-- Step 3 — Per-voice params + preview -->
+        <section x-show="wizard.step === 3">
+          <div class="vt-wizard-step3-head">
+            <span class="vt-wizard-summary-line">
+              <strong x-text="wizardTotalAudios()"></strong> audio<span x-show="wizardTotalAudios() !== 1">s</span>
+              = <span x-text="wizard.selectedPassageIds.size"></span> passage<span
+                x-show="wizard.selectedPassageIds.size !== 1">s</span>
+              <span x-show="wizard.customText.trim() && wizard.customTextSlot"> + 1 custom</span>
+              × voices per slot
+            </span>
+          </div>
+
+          <template x-for="combo in wizardVoiceCombos()" :key="combo.key">
+            <div class="vt-wizard-combo">
+              <header class="vt-wizard-combo-head">
+                <span class="vt-wizard-combo-voice">
+                  <strong x-text="combo.voice_id"></strong>
+                  <span class="vt-mini" x-text="combo.engine"></span>
+                </span>
+                <span class="vt-mini vt-wizard-combo-slot" x-text="combo.char.label"></span>
+                <div class="vt-spacer"></div>
+                <button class="vt-ghost vt-xs"
+                  @click="toggleExpandedParams(combo.key)"
+                  x-text="wizard.expandedParams[combo.key] ? 'hide params' : 'edit params'"></button>
+                <button class="vt-ghost vt-xs" @click="resetVoiceParams(combo.slot, combo.engine, combo.voice_id)">reset</button>
+                <button class="vt-primary vt-xs"
+                  :disabled="wizard.previewing === combo.key || wizard.submitting"
+                  @click="runPreview(combo.slot, combo.engine, combo.voice_id)"
+                  x-text="wizard.previewing === combo.key ? '…' : 'Preview'"></button>
+                <button class="vt-ghost vt-xs"
+                  x-show="wizard.previews[combo.key]"
+                  @click="playResult(wizard.previews[combo.key])">▶ play last</button>
+              </header>
+
+              <div class="vt-wizard-combo-params" x-show="wizard.expandedParams[combo.key]" x-cloak>
+                <template x-if="engineParamSchema(combo.engine).length === 0">
+                  <div class="vt-wizard-empty">no tunable params for this engine</div>
+                </template>
+                <template x-for="p in engineParamSchema(combo.engine)" :key="combo.key + ':' + p.key">
+                  <div class="vt-adv-row">
+                    <label x-text="p.label || p.key"></label>
+                    <template x-if="p.type === 'number' || p.type === 'int' || p.type === 'float'">
+                      <div class="vt-adv-inputs">
+                        <input type="range" :min="p.min" :max="p.max" :step="p.step || 0.01"
+                          :value="voiceParamValue(combo.slot, combo.engine, combo.voice_id, p.key, p.default)"
+                          @input="setVoiceParam(combo.slot, combo.engine, combo.voice_id, p.key, $event.target.value)">
+                        <input type="number" class="vt-num" :min="p.min" :max="p.max" :step="p.step || 0.01"
+                          :value="voiceParamValue(combo.slot, combo.engine, combo.voice_id, p.key, p.default)"
+                          @input="setVoiceParam(combo.slot, combo.engine, combo.voice_id, p.key, $event.target.value)">
+                      </div>
+                    </template>
+                    <template x-if="p.type === 'string' || p.type === 'text'">
+                      <textarea class="vt-text"
+                        :placeholder="p.placeholder || ''"
+                        @input="setVoiceParam(combo.slot, combo.engine, combo.voice_id, p.key, $event.target.value)"
+                        x-text="voiceParamValue(combo.slot, combo.engine, combo.voice_id, p.key, p.default || '')"></textarea>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <div class="vt-wizard-empty" x-show="wizardVoiceCombos().length === 0">
+            Go back and pick at least one voice per character.
+          </div>
+        </section>
+      </div>
+
+      <footer class="vt-wizard-foot">
+        <button class="vt-ghost" @click="closeWizard()" :disabled="wizard.submitting">Cancel</button>
+        <button class="vt-ghost" @click="wizardBack()" x-show="wizard.step > 1"
+          :disabled="wizard.submitting">Back</button>
+        <div class="vt-spacer"></div>
+        <span class="vt-wizard-summary" x-show="wizard.progress">
+          <span x-text="(wizard.progress?.current || 0) + 1"></span>
+          /
+          <span x-text="wizard.progress?.total"></span>
+          ·
+          <span x-text="wizard.progress?.label"></span>
+        </span>
+        <span class="vt-wizard-summary" x-show="!wizard.progress && wizard.step === 1"
+          x-text="wizardPassageSummary()"></span>
+        <span class="vt-wizard-summary" x-show="!wizard.progress && wizard.step === 2">
+          <span x-text="distinctWizardSlots().length"></span>&nbsp;slot<span
+            x-show="distinctWizardSlots().length !== 1">s</span> ·
+          <span x-text="distinctWizardSlots().reduce((a, c) => a + wizardVoiceCount(c.slot), 0)"></span>&nbsp;voices
+        </span>
+        <span class="vt-wizard-summary" x-show="!wizard.progress && wizard.step === 3">
+          <span x-text="wizardTotalAudios()"></span>&nbsp;audios
+        </span>
+        <button class="vt-primary"
+          :disabled="wizard.submitting || (wizard.step === 1 && !wizardStep1Ready()) || (wizard.step === 2 && !wizardStep2Ready())"
+          @click="wizardAdvance()"
+          x-text="wizard.submitting
+            ? 'Generating…'
+            : (wizard.step === 1
+                ? (wizardStep1Ready() ? 'Next · Voices' : 'Select passages')
+                : (wizard.step === 2
+                    ? (wizardStep2Ready() ? 'Next · Params' : 'Pick voices')
+                    : 'Generate ' + wizardTotalAudios() + ' audio' + (wizardTotalAudios() === 1 ? '' : 's')))"></button>
+      </footer>
     </div>
   </div>
 
@@ -333,6 +535,10 @@
       </template>
     </div>
   </div>
+
+  <!-- ──────── Floating Generate ──────── -->
+  <button class="vt-generate-fab" @click="openWizard()" :disabled="wizard.submitting"
+    x-text="wizard.submitting ? 'Generating…' : 'Generate'"></button>
 
 </div>
 

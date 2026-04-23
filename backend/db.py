@@ -50,9 +50,11 @@ CREATE TABLE IF NOT EXISTS voice_notes (
     engine TEXT NOT NULL,
     voice_id TEXT NOT NULL,
     slot TEXT NOT NULL,
+    params_fp TEXT NOT NULL DEFAULT '',
     notes TEXT,
+    stars INTEGER CHECK(stars BETWEEN 1 AND 5),
     updated_at INTEGER NOT NULL,
-    PRIMARY KEY (engine, voice_id, slot)
+    PRIMARY KEY (engine, voice_id, slot, params_fp)
 );
 
 CREATE TABLE IF NOT EXISTS shortlist (
@@ -73,6 +75,16 @@ CREATE TABLE IF NOT EXISTS casting_history (
 );
 CREATE INDEX IF NOT EXISTS idx_casting_history_slot
     ON casting_history(slot, changed_at DESC);
+
+CREATE TABLE IF NOT EXISTS voice_profile (
+    engine TEXT NOT NULL,
+    voice_id TEXT NOT NULL,
+    description TEXT,
+    sample_result_id INTEGER REFERENCES results(id) ON DELETE SET NULL,
+    traits TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (engine, voice_id)
+);
 """
 
 
@@ -94,6 +106,15 @@ def _migrate(db_path: Path | None = None) -> None:
         if ver < 2:
             _migrate_v2(conn)
             conn.execute("PRAGMA user_version = 2")
+        if ver < 3:
+            _migrate_v3(conn)
+            conn.execute("PRAGMA user_version = 3")
+        if ver < 4:
+            _migrate_v4(conn)
+            conn.execute("PRAGMA user_version = 4")
+        if ver < 5:
+            _migrate_v5(conn)
+            conn.execute("PRAGMA user_version = 5")
         conn.commit()
 
 
@@ -157,6 +178,60 @@ def _migrate_v2(conn: sqlite3.Connection) -> None:
         )
         conn.execute("DROP TABLE voice_notes")
         conn.execute("ALTER TABLE voice_notes_new RENAME TO voice_notes")
+
+
+def _migrate_v3(conn: sqlite3.Connection) -> None:
+    # Global voice profile: personality/tone description + pinned canonical
+    # sample. Distinct from voice_notes, which is slot-scoped.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS voice_profile ("
+        "  engine TEXT NOT NULL,"
+        "  voice_id TEXT NOT NULL,"
+        "  description TEXT,"
+        "  sample_result_id INTEGER REFERENCES results(id) ON DELETE SET NULL,"
+        "  updated_at INTEGER NOT NULL,"
+        "  PRIMARY KEY (engine, voice_id)"
+        ")"
+    )
+
+
+def _migrate_v4(conn: sqlite3.Connection) -> None:
+    # Add `traits` (JSON array of tone tags) to voice_profile so Step 2
+    # filters can facet on warmth / depth / brightness / etc.
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(voice_profile)").fetchall()]
+    if "traits" not in cols:
+        conn.execute("ALTER TABLE voice_profile ADD COLUMN traits TEXT")
+
+
+def _migrate_v5(conn: sqlite3.Connection) -> None:
+    # voice_notes gains `params_fp` (so the same voice with different
+    # generation params is a distinct bucket) and `stars` (per-voice-group,
+    # replacing shortlist as the curation signal). PK becomes
+    # (engine, voice_id, slot, params_fp). Existing rows migrate with
+    # params_fp = '' (empty = default / no params).
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(voice_notes)").fetchall()]
+    if "params_fp" in cols and "stars" in cols:
+        return
+    conn.execute(
+        "CREATE TABLE voice_notes_new ("
+        "  engine TEXT NOT NULL,"
+        "  voice_id TEXT NOT NULL,"
+        "  slot TEXT NOT NULL,"
+        "  params_fp TEXT NOT NULL DEFAULT '',"
+        "  notes TEXT,"
+        "  stars INTEGER CHECK(stars BETWEEN 1 AND 5),"
+        "  updated_at INTEGER NOT NULL,"
+        "  PRIMARY KEY (engine, voice_id, slot, params_fp)"
+        ")"
+    )
+    conn.execute(
+        "INSERT INTO voice_notes_new "
+        "(engine, voice_id, slot, params_fp, notes, stars, updated_at) "
+        "SELECT engine, voice_id, slot, '', notes, NULL, updated_at "
+        "FROM voice_notes"
+    )
+    conn.execute("DROP TABLE voice_notes")
+    conn.execute("ALTER TABLE voice_notes_new RENAME TO voice_notes")
 
 
 # Character slot order (matches casting presentation order).
@@ -369,39 +444,91 @@ def get_casting() -> dict[str, dict | None]:
     return {r["character_slot"]: dict(r) for r in rows}
 
 
-# ---------- voice notes (slot-scoped) ----------
+# ---------- voice notes (slot-scoped, per voice+params bucket) ----------
 
-def get_voice_notes(slot: str | None = None) -> dict[tuple[str, str], str]:
-    """Return user notes keyed by (engine, voice_id) for one slot.
+_UNSET = object()
 
-    Notes are slot-scoped — the same voice can carry different notes per
-    character it's auditioning for. Pass None to return {} (no meaningful
-    cross-slot view).
+
+def params_fingerprint(params: dict | None) -> str:
+    """Stable fingerprint of params_json for voice-group keying.
+
+    Empty/None params collapse to '' — the canonical "default" bucket.
+    Non-empty params serialize with sorted keys so ordering doesn't matter.
+    """
+    if not params:
+        return ""
+    return json.dumps(params, sort_keys=True, separators=(",", ":"))
+
+
+def get_voice_notes(slot: str | None = None) -> dict[tuple[str, str, str], dict]:
+    """Return {(engine, voice_id, params_fp): {notes, stars}} for one slot.
+
+    Notes & stars are slot-scoped and per voice-params bucket — the same
+    voice+params can carry different values per character. Pass None to
+    return {} (no meaningful cross-slot view).
     """
     if slot is None:
         return {}
     with connect() as conn:
         rows = conn.execute(
-            "SELECT engine, voice_id, notes FROM voice_notes WHERE slot = ?",
+            "SELECT engine, voice_id, params_fp, notes, stars "
+            "FROM voice_notes WHERE slot = ?",
             (slot,),
         ).fetchall()
-    return {(r["engine"], r["voice_id"]): r["notes"] for r in rows if r["notes"]}
+    return {
+        (r["engine"], r["voice_id"], r["params_fp"]):
+            {"notes": r["notes"], "stars": r["stars"]}
+        for r in rows
+    }
 
 
-def upsert_voice_note(engine: str, voice_id: str, slot: str, notes: str | None) -> None:
+def upsert_voice_note(
+    engine: str,
+    voice_id: str,
+    slot: str,
+    params_fp: str = "",
+    *,
+    notes=_UNSET,
+    stars=_UNSET,
+) -> None:
+    """Partial-update a voice-note bucket.
+
+    Unspecified fields (left as _UNSET) preserve their existing values.
+    When the row ends up with both notes and stars empty/None, it is
+    deleted to keep the table clean.
+    """
     with connect() as conn:
-        if not notes:
+        existing = conn.execute(
+            "SELECT notes, stars FROM voice_notes "
+            "WHERE engine = ? AND voice_id = ? AND slot = ? AND params_fp = ?",
+            (engine, voice_id, slot, params_fp),
+        ).fetchone()
+        new_notes = (existing["notes"] if existing else None) if notes is _UNSET else notes
+        new_stars = (existing["stars"] if existing else None) if stars is _UNSET else stars
+        if not new_notes and new_stars is None:
             conn.execute(
-                "DELETE FROM voice_notes WHERE engine = ? AND voice_id = ? AND slot = ?",
-                (engine, voice_id, slot),
+                "DELETE FROM voice_notes "
+                "WHERE engine = ? AND voice_id = ? AND slot = ? AND params_fp = ?",
+                (engine, voice_id, slot, params_fp),
             )
             return
         conn.execute(
-            "INSERT INTO voice_notes (engine, voice_id, slot, notes, updated_at) "
-            "VALUES (?, ?, ?, ?, ?) "
-            "ON CONFLICT(engine, voice_id, slot) DO UPDATE SET "
-            "notes = excluded.notes, updated_at = excluded.updated_at",
-            (engine, voice_id, slot, notes, now_ms()),
+            "INSERT INTO voice_notes "
+            "(engine, voice_id, slot, params_fp, notes, stars, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(engine, voice_id, slot, params_fp) DO UPDATE SET "
+            "notes = excluded.notes, stars = excluded.stars, "
+            "updated_at = excluded.updated_at",
+            (engine, voice_id, slot, params_fp, new_notes, new_stars, now_ms()),
+        )
+
+
+def delete_voice_note(engine: str, voice_id: str, slot: str, params_fp: str = "") -> None:
+    with connect() as conn:
+        conn.execute(
+            "DELETE FROM voice_notes "
+            "WHERE engine = ? AND voice_id = ? AND slot = ? AND params_fp = ?",
+            (engine, voice_id, slot, params_fp),
         )
 
 
@@ -479,3 +606,104 @@ def list_casting_history(slot: str, limit: int = 3) -> list[dict]:
             (slot, limit),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ---------- voice profile (global, per engine+voice_id) ----------
+
+def get_voice_profile(engine: str, voice_id: str) -> dict | None:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT engine, voice_id, description, sample_result_id, traits, updated_at "
+            "FROM voice_profile WHERE engine = ? AND voice_id = ?",
+            (engine, voice_id),
+        ).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["traits"] = json.loads(d["traits"]) if d.get("traits") else []
+    return d
+
+
+def upsert_voice_profile(
+    engine: str,
+    voice_id: str,
+    description: str | None = None,
+    sample_result_id: int | None = None,
+    traits: list[str] | None = None,
+) -> None:
+    """Upsert (engine, voice_id) profile. Unspecified fields stay untouched."""
+    with connect() as conn:
+        existing = conn.execute(
+            "SELECT description, sample_result_id, traits FROM voice_profile "
+            "WHERE engine = ? AND voice_id = ?",
+            (engine, voice_id),
+        ).fetchone()
+        if existing:
+            new_desc = description if description is not None else existing["description"]
+            new_sample = (sample_result_id if sample_result_id is not None
+                          else existing["sample_result_id"])
+            new_traits = (json.dumps(traits) if traits is not None
+                          else existing["traits"])
+        else:
+            new_desc = description
+            new_sample = sample_result_id
+            new_traits = json.dumps(traits) if traits is not None else None
+        conn.execute(
+            "INSERT INTO voice_profile "
+            "(engine, voice_id, description, sample_result_id, traits, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(engine, voice_id) DO UPDATE SET "
+            "description = excluded.description, "
+            "sample_result_id = excluded.sample_result_id, "
+            "traits = excluded.traits, "
+            "updated_at = excluded.updated_at",
+            (engine, voice_id, new_desc, new_sample, new_traits, now_ms()),
+        )
+
+
+def list_voice_profiles() -> dict[str, dict]:
+    """Keyed `"engine|voice_id"` for cheap client-side lookup in the bootstrap."""
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT engine, voice_id, description, sample_result_id, traits, updated_at "
+            "FROM voice_profile"
+        ).fetchall()
+    out = {}
+    for r in rows:
+        d = dict(r)
+        d["traits"] = json.loads(d["traits"]) if d.get("traits") else []
+        out[f"{r['engine']}|{r['voice_id']}"] = d
+    return out
+
+
+def list_voice_casting_history_flat() -> dict[str, list[dict]]:
+    """Voices cast to each slot, aggregated with count + last cast time.
+
+    Shape: { slot: [{engine, voice_id, count, last_at}, ...] }.
+    Drives "Previously cast" chips / badges in the wizard's voice step.
+    """
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT ch.slot, r.engine, r.voice_id, "
+            "       COUNT(*) AS count, MAX(ch.changed_at) AS last_at "
+            "FROM casting_history ch "
+            "JOIN results r ON ch.result_id = r.id "
+            "WHERE ch.result_id IS NOT NULL "
+            "GROUP BY ch.slot, r.engine, r.voice_id "
+            "ORDER BY ch.slot, MAX(ch.changed_at) DESC"
+        ).fetchall()
+    out: dict[str, list[dict]] = {}
+    for r in rows:
+        out.setdefault(r["slot"], []).append(dict(r))
+    return out
+
+
+def latest_result_for_voice(engine: str, voice_id: str) -> int | None:
+    """Fallback sample source when voice_profile has no pinned sample."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT id FROM results WHERE engine = ? AND voice_id = ? "
+            "ORDER BY id DESC LIMIT 1",
+            (engine, voice_id),
+        ).fetchone()
+    return row["id"] if row else None

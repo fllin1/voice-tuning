@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import characters, db
+from . import characters, db, voice_descriptions
 from .engines.registry import get_engines
 from .routes import casting, generate, passages, ratings, shortlist, voices
 
@@ -19,6 +19,7 @@ TEMPLATES = Jinja2Templates(directory=str(ROOT / "backend" / "templates"))
 async def lifespan(app: FastAPI):
     db.init_db()
     _seed_passages()
+    _seed_voice_profiles()
     for name, eng in get_engines().items():
         if not eng.available:
             print(f"[engine:{name}] disabled — {eng.unavailable_reason}")
@@ -56,6 +57,35 @@ def _seed_passages() -> None:
         )
 
 
+def _seed_voice_profiles() -> None:
+    """Fill missing description/traits from curated voice_descriptions.
+
+    Never overwrites user-edited descriptions — only upserts when the
+    existing row has no description (or no row exists). Traits from
+    curation are applied when the row's traits list is empty.
+    """
+    existing = db.list_voice_profiles()
+    for name, eng in get_engines().items():
+        if not eng.available:
+            continue
+        for v in eng.list_voices():
+            info = voice_descriptions.lookup(name, v.model_dump())
+            if not info:
+                continue
+            key = f"{name}|{v.id}"
+            prev = existing.get(key) or {}
+            has_desc = bool((prev.get("description") or "").strip())
+            has_traits = bool(prev.get("traits"))
+            if has_desc and has_traits:
+                continue
+            db.upsert_voice_profile(
+                engine=name,
+                voice_id=v.id,
+                description=None if has_desc else info["description"],
+                traits=None if has_traits else info.get("traits", []),
+            )
+
+
 def _build_bootstrap() -> dict:
     """Compute the complete initial state for the single-page UI."""
     # results (all, with audio url)
@@ -83,15 +113,13 @@ def _build_bootstrap() -> dict:
             "notes": entry["notes"] if entry else None,
         })
 
-    # shortlists & casting history per slot
-    shortlists: dict[str, list] = {}
-    history: dict[str, list] = {}
+    # voice notes + stars per slot, keyed by "engine|voice_id|params_fp"
+    voice_notes: dict[str, dict] = {}
     for c in characters.CHARACTERS:
-        rows = db.list_shortlist(c.slot)
-        for r in rows:
-            r["audio_url"] = f"/api/audio/{r['audio_hash']}.wav"
-        shortlists[c.slot] = rows
-        history[c.slot] = db.list_casting_history(c.slot, 3)
+        voice_notes[c.slot] = {
+            f"{e}|{v}|{fp}": {"notes": row["notes"], "stars": row["stars"]}
+            for (e, v, fp), row in db.get_voice_notes(c.slot).items()
+        }
 
     # engines / voices (notes are slot-scoped; fetched when popover opens)
     engines_out = []
@@ -115,8 +143,10 @@ def _build_bootstrap() -> dict:
         "passages": passages_list,
         "engines": engines_out,
         "results": results,
-        "shortlists": shortlists,
-        "casting_history": history,
+        "voice_notes": voice_notes,
+        "voice_profiles": db.list_voice_profiles(),
+        "preset_voices": db.list_voice_casting_history_flat(),
+        "tryout_text": characters.TRYOUT_TEXT,
     }
 
 
