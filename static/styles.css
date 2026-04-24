@@ -1044,10 +1044,10 @@ body[data-ui="v2"] .vt-group-body {
   padding-top: var(--sp-4);
 }
 
-/* ── Cards grid ── */
+/* ── Cards list ── */
 body[data-ui="v2"] .vt-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-3);
 }
 
@@ -1081,35 +1081,65 @@ body[data-ui="v2"] .vt-voice-params {
   flex-wrap: wrap;
   gap: 4px;
 }
-body[data-ui="v2"] .vt-voice-plays {
+
+/* Dialogue sub-list (one row per sample) */
+body[data-ui="v2"] .vt-voice-dialogues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
+  flex-direction: column;
 }
-body[data-ui="v2"] .vt-play-sample {
-  display: inline-flex;
+body[data-ui="v2"] .vt-dialogue-row {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px 4px 8px;
-  border-radius: 999px;
-  background: var(--surface-2);
-  border: var(--border-w) solid var(--border);
-  color: var(--accent);
-  font-size: var(--fs-xs);
-  cursor: pointer;
-  width: auto;
-  height: auto;
+  gap: var(--sp-2);
+  padding: 4px 0;
+  border-top: var(--border-w) solid var(--border-soft);
+  font-size: var(--fs-sm);
 }
-body[data-ui="v2"] .vt-play-sample:hover { border-color: var(--accent); background: var(--accent-soft); }
-body[data-ui="v2"] .vt-play-sample.playing {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+body[data-ui="v2"] .vt-dialogue-row:first-child { border-top: none; }
+body[data-ui="v2"] .vt-dialogue-marker {
+  color: var(--text-dim);
+  font-size: 14px;
+  width: 12px;
+  text-align: center;
+  flex: 0 0 auto;
 }
-body[data-ui="v2"] .vt-play-speed {
+body[data-ui="v2"] .vt-dialogue-title {
+  flex: 1 1 auto;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body[data-ui="v2"] .vt-dialogue-speed {
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   color: var(--text-muted);
+  flex: 0 0 auto;
 }
+body[data-ui="v2"] .vt-dialogue-play {
+  background: transparent;
+  border: var(--border-w) solid var(--border);
+  color: var(--accent);
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+body[data-ui="v2"] .vt-dialogue-play:hover { border-color: var(--accent); background: var(--accent-soft); }
+body[data-ui="v2"] .vt-dialogue-row.playing .vt-dialogue-play,
+body[data-ui="v2"] .vt-dialogue-play.playing {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+body[data-ui="v2"] .vt-dialogue-row.playing .vt-dialogue-title { color: var(--accent); }
+
 body[data-ui="v2"] .vt-voice-speed {
   display: flex;
   align-items: center;

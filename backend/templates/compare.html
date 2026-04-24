@@ -69,17 +69,21 @@
                   <div class="vt-voice-params" x-html="paramChipsForGroup(g)"
                     x-show="Object.keys(g.params).length > 0"></div>
 
-                  <div class="vt-voice-plays">
+                  <ul class="vt-voice-dialogues">
                     <template x-for="s in g.samples" :key="s.id">
-                      <button class="vt-play vt-play-sample"
-                        :class="{ playing: currentAudioId === s.id && audioPlaying }"
-                        @click="playResult(s)"
-                        :title="passageTitleFor(s) + ' · ' + (+s.speed).toFixed(2) + '×'">
-                        <span x-text="currentAudioId === s.id && audioPlaying ? '❚❚' : '▶'"></span>
-                        <span class="vt-play-speed" x-text="(+s.speed).toFixed(2) + '×'"></span>
-                      </button>
+                      <li class="vt-dialogue-row"
+                        :class="{ playing: currentAudioId === s.id && audioPlaying }">
+                        <span class="vt-dialogue-marker" aria-hidden="true">•</span>
+                        <span class="vt-dialogue-title" x-text="passageTitleFor(s)"></span>
+                        <span class="vt-dialogue-speed" x-text="(+s.speed).toFixed(2) + '×'"></span>
+                        <button class="vt-dialogue-play"
+                          :class="{ playing: currentAudioId === s.id && audioPlaying }"
+                          @click="playResult(s)"
+                          :title="passageTitleFor(s) + ' · ' + (+s.speed).toFixed(2) + '×'"
+                          x-text="currentAudioId === s.id && audioPlaying ? '❚❚' : '▶'"></button>
+                      </li>
                     </template>
-                  </div>
+                  </ul>
 
                   <div class="vt-stars">
                     <template x-for="n in [1,2,3,4,5]" :key="n">
