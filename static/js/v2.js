@@ -57,7 +57,9 @@
       nudge: { open: false, slot: null, voice: null, label: null, resultId: null },
       deleteArmed: null,       // group key currently armed for delete
       deleteArmTimer: null,
-      focusedResultId: null,
+      focusedGroupKey: null,   // voice-level keyboard focus (data-group-key)
+      focusedSampleId: null,   // dialogue-row focus within the focused voice
+      helpOpen: false,         // ?-overlay
       cardSpeeds: {},          // { groupKey: 1.0 }
       regenerating: null,      // groupKey currently regenerating
 
@@ -869,6 +871,17 @@
 
       // ─────────── per-card actions ───────────
       playResult(r) {
+        // Update keyboard focus to the sample being played (when it belongs to a known group).
+        if (r && r.passage_id) {
+          const slot = this._passageToSlot[r.passage_id];
+          if (slot) {
+            this.focusedGroupKey = this.groupKey(r.engine, r.voice_id, this.paramsFp(r));
+            this.focusedSampleId = r.id;
+          }
+        }
+        return this._playResult(r);
+      },
+      _playResult(r) {
         if (!r || !r.audio_url) return;
         const el = this.audioEl;
         if (this.currentAudioId === r.id && !el.paused) { el.pause(); return; }
@@ -1038,6 +1051,100 @@
         if (m.length) { this.jumpTo(m[0].slot); this.palette.open = false; }
       },
 
+      // ─────────── focus / keyboard helpers ───────────
+      visibleGroups() {
+        const out = [];
+        for (const c of this.characters) {
+          if (this.collapsed.has(c.slot)) continue;
+          for (const g of this.groupedResults(c.slot)) out.push({ slot: c.slot, g });
+        }
+        return out;
+      },
+      focusedEntry() {
+        if (!this.focusedGroupKey) return null;
+        return this.visibleGroups().find(e => e.g.key === this.focusedGroupKey) || null;
+      },
+      setFocus(slot, g, sampleId = null) {
+        this.focusedGroupKey = g.key;
+        this.focusedSampleId = sampleId !== null ? sampleId : (g.samples[0]?.id || null);
+        this.activeSlot = slot;
+      },
+      clearFocus() {
+        this.focusedGroupKey = null;
+        this.focusedSampleId = null;
+      },
+      _scrollFocusedIntoView() {
+        if (!this.focusedGroupKey) return;
+        this.$nextTick(() => {
+          const el = document.querySelector(
+            `.vt-voice-card[data-group-key="${CSS.escape(this.focusedGroupKey)}"]`
+          );
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
+      },
+      focusNextGroup(delta) {
+        const list = this.visibleGroups();
+        if (!list.length) return;
+        let i;
+        if (!this.focusedGroupKey) {
+          i = 0;
+        } else {
+          i = list.findIndex(e => e.g.key === this.focusedGroupKey);
+          i = i < 0 ? 0 : Math.min(list.length - 1, Math.max(0, i + delta));
+        }
+        const e = list[i];
+        this.setFocus(e.slot, e.g);
+        this._scrollFocusedIntoView();
+      },
+      focusNextSample(delta) {
+        const e = this.focusedEntry();
+        if (!e) return;
+        const samples = e.g.samples;
+        if (!samples.length) return;
+        let i = samples.findIndex(s => s.id === this.focusedSampleId);
+        if (i < 0) i = 0;
+        const ni = Math.min(samples.length - 1, Math.max(0, i + delta));
+        this.focusedSampleId = samples[ni].id;
+      },
+      playFocused() {
+        const e = this.focusedEntry();
+        if (!e) {
+          // Auto-focus the first visible voice and play its first dialogue.
+          const list = this.visibleGroups();
+          if (!list.length) return;
+          const first = list[0];
+          this.setFocus(first.slot, first.g);
+          this._scrollFocusedIntoView();
+          const s = first.g.samples[0];
+          if (s) this.playResult(s);
+          return;
+        }
+        const s = e.g.samples.find(x => x.id === this.focusedSampleId) || e.g.samples[0];
+        if (s) this.playResult(s);
+      },
+      rateFocused(n) {
+        const e = this.focusedEntry();
+        if (!e) return;
+        this.setVoiceStars(e.slot, e.g, n);
+      },
+      unrateFocused() {
+        const e = this.focusedEntry();
+        if (!e || !e.g.stars) return;
+        // setVoiceStars(slot, g, sameValue) toggles to null.
+        this.setVoiceStars(e.slot, e.g, e.g.stars);
+      },
+      castFocused() {
+        const e = this.focusedEntry();
+        if (!e) return;
+        const s = e.g.samples.find(x => x.id === this.focusedSampleId) || e.g.samples[0];
+        if (s) this.castAs(s, e.slot);
+      },
+      deleteFocused() {
+        const e = this.focusedEntry();
+        if (!e) return;
+        this.confirmDeleteGroup(e.slot, e.g);
+      },
+
       // ─────────── keyboard ───────────
       onKey(ev) {
         // Don't swallow keystrokes in inputs.
@@ -1053,8 +1160,33 @@
           return;
         }
         if (isEditable) return;
+        // Don't intercept browser shortcuts.
+        if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
 
-        // Collapse / expand all
+        // Esc — close help, disarm delete, or clear focus.
+        // (Other modals — wizard, palette, nudge — own their own Esc handlers.)
+        if (ev.key === "Escape") {
+          if (this.helpOpen) { this.helpOpen = false; return; }
+          if (this.wizard.open || this.palette.open || this.nudge.open) return;
+          if (this.deleteArmed) {
+            this.deleteArmed = null;
+            clearTimeout(this.deleteArmTimer);
+            return;
+          }
+          if (this.focusedGroupKey) { this.clearFocus(); return; }
+          return;
+        }
+
+        // ?-overlay (Shift+/ on US layouts)
+        if (ev.key === "?") {
+          ev.preventDefault();
+          this.helpOpen = !this.helpOpen;
+          return;
+        }
+        // While a modal is open, only Esc / ⌘K / ? above are honored.
+        if (this.helpOpen || this.wizard.open || this.palette.open || this.nudge.open) return;
+
+        // Collapse / expand all (preserve existing).
         if (ev.key === "g") {
           if (this._lastG && Date.now() - this._lastG < 600) {
             this.collapseAll();
@@ -1068,6 +1200,31 @@
           this.expandAll();
           return;
         }
+
+        // Vim navigation.
+        if (ev.key === "j") { ev.preventDefault(); this.focusNextGroup(+1); return; }
+        if (ev.key === "k") { ev.preventDefault(); this.focusNextGroup(-1); return; }
+        if (ev.key === "l") { ev.preventDefault(); this.focusNextSample(+1); return; }
+        if (ev.key === "h") { ev.preventDefault(); this.focusNextSample(-1); return; }
+
+        // Space — toggle play on focused.
+        if (ev.key === " " || ev.code === "Space") {
+          ev.preventDefault();
+          this.playFocused();
+          return;
+        }
+
+        // Rating.
+        if (ev.key >= "1" && ev.key <= "5") {
+          this.rateFocused(parseInt(ev.key, 10));
+          return;
+        }
+        if (ev.key === "0") { this.unrateFocused(); return; }
+
+        // Actions.
+        if (ev.key === "c") { this.castFocused(); return; }
+        if (ev.key === "x") { this.deleteFocused(); return; }
+        if (ev.key === "n") { this.openWizard(); return; }
       },
     };
   }

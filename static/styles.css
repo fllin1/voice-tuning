@@ -1064,6 +1064,11 @@ body[data-ui="v2"] .vt-voice-card {
 }
 body[data-ui="v2"] .vt-voice-card:hover { border-color: var(--border); }
 body[data-ui="v2"] .vt-voice-card.cast { border-color: var(--accent); }
+body[data-ui="v2"] .vt-voice-card.focused {
+  box-shadow: inset 0 0 0 1px var(--accent);
+  border-color: var(--accent);
+}
+body[data-ui="v2"] .vt-voice-card:focus { outline: none; }
 body[data-ui="v2"] .vt-voice-head {
   display: flex;
   align-items: center;
@@ -1139,6 +1144,8 @@ body[data-ui="v2"] .vt-dialogue-play.playing {
   background: var(--accent-soft);
 }
 body[data-ui="v2"] .vt-dialogue-row.playing .vt-dialogue-title { color: var(--accent); }
+body[data-ui="v2"] .vt-dialogue-row.focused .vt-dialogue-marker { color: var(--accent); }
+body[data-ui="v2"] .vt-dialogue-row.focused .vt-dialogue-title { color: var(--text); }
 
 body[data-ui="v2"] .vt-voice-speed {
   display: flex;
@@ -1452,6 +1459,80 @@ body[data-ui="v2"] .vt-nudge {
   align-items: center;
   font-size: var(--fs-sm);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Help / shortcuts overlay ── */
+body[data-ui="v2"] .vt-help-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: var(--z-palette);
+}
+body[data-ui="v2"] .vt-help {
+  background: var(--surface);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius);
+  width: 720px;
+  max-width: 92vw;
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+body[data-ui="v2"] .vt-help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: var(--border-w) solid var(--border-soft);
+  padding-bottom: var(--sp-2);
+}
+body[data-ui="v2"] .vt-help-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-4);
+}
+body[data-ui="v2"] .vt-help-grid h4 {
+  margin: 0 0 var(--sp-2) 0;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+body[data-ui="v2"] .vt-help-grid dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: var(--sp-3);
+  row-gap: 6px;
+  align-items: center;
+}
+body[data-ui="v2"] .vt-help-grid dt {
+  margin: 0;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+body[data-ui="v2"] .vt-help-grid dd {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+body[data-ui="v2"] .vt-help-grid kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  background: var(--surface-2);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+}
+@media (max-width: 720px) {
+  body[data-ui="v2"] .vt-help-grid { grid-template-columns: 1fr; }
 }
 
 /* ── Command palette ── */

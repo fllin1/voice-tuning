@@ -6,7 +6,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script defer src="/static/js/v2.js"></script>
+  <script defer src="/static/js/v2.js?v={{ static_v }}"></script>
 {% endblock %}
 
 {% block body_attrs %} data-ui="v2"{% endblock %}
@@ -32,6 +32,8 @@
       <span x-text="characters.length"></span>
       cast
     </span>
+    <span class="vt-viewbar-sep" aria-hidden="true"></span>
+    <button class="vt-ghost vt-xs" @click="helpOpen = true" title="Keyboard shortcuts (?)">? shortcuts</button>
   </nav>
 
   <!-- ──────── Layout: main + rail ──────── -->
@@ -57,8 +59,13 @@
             <div class="vt-cards">
               <template x-for="g in groupedResults(char.slot)" :key="g.key">
                 <article class="vt-voice-card"
-                  :class="{ cast: g.samples.some(s => castedResultId(char.slot) === s.id) }"
-                  :data-group-key="g.key">
+                  tabindex="-1"
+                  :class="{
+                    cast: g.samples.some(s => castedResultId(char.slot) === s.id),
+                    focused: focusedGroupKey === g.key
+                  }"
+                  :data-group-key="g.key"
+                  @click="setFocus(char.slot, g)">
                   <div class="vt-voice-head">
                     <strong x-text="g.voice_id"></strong>
                     <span class="vt-card-engine" x-text="g.engine"></span>
@@ -72,13 +79,17 @@
                   <ul class="vt-voice-dialogues">
                     <template x-for="s in g.samples" :key="s.id">
                       <li class="vt-dialogue-row"
-                        :class="{ playing: currentAudioId === s.id && audioPlaying }">
+                        :class="{
+                          playing: currentAudioId === s.id && audioPlaying,
+                          focused: focusedGroupKey === g.key && focusedSampleId === s.id
+                        }"
+                        @click.stop="setFocus(char.slot, g, s.id)">
                         <span class="vt-dialogue-marker" aria-hidden="true">•</span>
                         <span class="vt-dialogue-title" x-text="passageTitleFor(s)"></span>
                         <span class="vt-dialogue-speed" x-text="(+s.speed).toFixed(2) + '×'"></span>
                         <button class="vt-dialogue-play"
                           :class="{ playing: currentAudioId === s.id && audioPlaying }"
-                          @click="playResult(s)"
+                          @click.stop="setFocus(char.slot, g, s.id); playResult(s)"
                           :title="passageTitleFor(s) + ' · ' + (+s.speed).toFixed(2) + '×'"
                           x-text="currentAudioId === s.id && audioPlaying ? '❚❚' : '▶'"></button>
                       </li>
@@ -525,6 +536,46 @@
     <span>Cast <strong x-text="nudge.voice"></strong> as <strong x-text="nudge.label"></strong>?</span>
     <button class="vt-primary vt-xs" @click="acceptNudge()">Cast</button>
     <button class="vt-ghost vt-xs" @click="nudge.open = false">Dismiss</button>
+  </div>
+
+  <!-- ──────── Help overlay (?) ──────── -->
+  <div class="vt-help-overlay" x-show="helpOpen" x-cloak @click.self="helpOpen = false">
+    <div class="vt-help">
+      <div class="vt-help-head">
+        <strong>Keyboard shortcuts</strong>
+        <button class="vt-ghost vt-xs" @click="helpOpen = false">Close · Esc</button>
+      </div>
+      <div class="vt-help-grid">
+        <section>
+          <h4>Audition</h4>
+          <dl>
+            <dt><kbd>Space</kbd></dt><dd>Play / pause focused</dd>
+            <dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next / previous voice</dd>
+            <dt><kbd>l</kbd> <kbd>h</kbd></dt><dd>Next / previous dialogue</dd>
+          </dl>
+        </section>
+        <section>
+          <h4>Rate &amp; cast</h4>
+          <dl>
+            <dt><kbd>1</kbd>–<kbd>5</kbd></dt><dd>Rate focused 1–5★ (toggles)</dd>
+            <dt><kbd>0</kbd></dt><dd>Clear rating</dd>
+            <dt><kbd>c</kbd></dt><dd>Cast focused to its slot</dd>
+            <dt><kbd>x</kbd></dt><dd>Delete focused (twice to confirm)</dd>
+          </dl>
+        </section>
+        <section>
+          <h4>View &amp; generate</h4>
+          <dl>
+            <dt><kbd>n</kbd></dt><dd>Open Generate</dd>
+            <dt><kbd>⌘K</kbd></dt><dd>Character palette</dd>
+            <dt><kbd>g</kbd><kbd>g</kbd></dt><dd>Collapse all</dd>
+            <dt><kbd>G</kbd></dt><dd>Expand all</dd>
+            <dt><kbd>?</kbd></dt><dd>Toggle this help</dd>
+            <dt><kbd>Esc</kbd></dt><dd>Clear focus / close help</dd>
+          </dl>
+        </section>
+      </div>
+    </div>
   </div>
 
   <!-- ──────── Command palette (⌘K) ──────── -->

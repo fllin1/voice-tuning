@@ -15,6 +15,12 @@ ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = Jinja2Templates(directory=str(ROOT / "backend" / "templates"))
 
 
+def _static_version() -> str:
+    js = ROOT / "static" / "js" / "v2.js"
+    css = ROOT / "static" / "styles.css"
+    return str(int(max(js.stat().st_mtime, css.stat().st_mtime)))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
@@ -153,5 +159,6 @@ def _build_bootstrap() -> dict:
 @app.get("/", response_class=HTMLResponse)
 def page_compare(request: Request):
     return TEMPLATES.TemplateResponse(
-        request, "compare.html", {"bootstrap": _build_bootstrap()},
+        request, "compare.html",
+        {"bootstrap": _build_bootstrap(), "static_v": _static_version()},
     )
