@@ -67,6 +67,7 @@
       regenerating: null,      // groupKey currently regenerating
       savedFlags: {},          // { groupKey: timestamp } — drives transient "saved ✓"
       saveError: null,         // { msg, at } — drives global save-error toast
+      pendingDelete: null,     // { slot, g, samples, timer, expiresAt } — 10s undo window
 
       // ── Generate state ──
       selectedPassageId: null,
@@ -148,6 +149,16 @@
           this.audioPlaying = false;
           this.currentAudioId = null;
         });
+
+        // If a deferred delete is still pending when the tab closes, fire the
+        // DELETEs as keepalive so the server eventually catches up.
+        window.addEventListener("beforeunload", () => {
+          const pd = this.pendingDelete;
+          if (!pd) return;
+          for (const s of pd.samples) {
+            fetch(`/api/results/${s.id}`, { method: "DELETE", keepalive: true });
+          }
+        });
       },
 
       // ─────────── derived ───────────
@@ -218,6 +229,10 @@
         });
         if (this.filterMin) out = out.filter(g => (g.stars || 0) >= 4);
         if (this.filterMarked) out = out.filter(g => g.marked);
+        if (this.pendingDelete && this.pendingDelete.slot === slot) {
+          const hideKey = this.pendingDelete.g.key;
+          out = out.filter(g => g.key !== hideKey);
+        }
         return out;
       },
       slotStarSummary(slot) {
@@ -1110,19 +1125,45 @@
           c.result && ids.has(c.result.id) ? { ...c, result: null } : c
         );
       },
-      async _doDeleteGroup(slot, g) {
-        await this._doDelete(g.samples);
-        // Clear every field so backend auto-deletes the voice-note row.
-        await api(`/api/voices/${g.engine}/${g.voice_id}/notes?slot=${encodeURIComponent(slot)}`, {
+      _doDeleteGroup(slot, g) {
+        // Defer the actual DELETE for 10s so the user can hit Undo.
+        // The card disappears immediately (groupedResults filters it out).
+        if (this.pendingDelete) this._flushPendingDelete();
+        const samples = [...g.samples];
+        const expiresAt = Date.now() + 10000;
+        const timer = setTimeout(() => this._flushPendingDelete(), 10000);
+        this.pendingDelete = { slot, g, samples, timer, expiresAt };
+      },
+      undoDelete() {
+        if (!this.pendingDelete) return;
+        clearTimeout(this.pendingDelete.timer);
+        this.pendingDelete = null;
+      },
+      async _flushPendingDelete() {
+        const pd = this.pendingDelete;
+        if (!pd) return;
+        this.pendingDelete = null;
+        clearTimeout(pd.timer);
+        const ids = pd.samples.map(s => s.id);
+        for (const id of ids) {
+          await api(`/api/results/${id}`, { method: "DELETE" });
+        }
+        // Clear every voice-note field so backend GCs the row.
+        await api(`/api/voices/${pd.g.engine}/${pd.g.voice_id}/notes?slot=${encodeURIComponent(pd.slot)}`, {
           method: "PUT",
           body: JSON.stringify({
-            params_fp: g.params_fp,
+            params_fp: pd.g.params_fp,
             notes: null, stars: null, playback_speed: null, marked: false,
           }),
         });
-        const slotMap = { ...(this.voiceNotes[slot] || {}) };
-        delete slotMap[g.key];
-        this.voiceNotes = { ...this.voiceNotes, [slot]: slotMap };
+        const idSet = new Set(ids);
+        this.results = this.results.filter(r => !idSet.has(r.id));
+        this.casting = this.casting.map(c =>
+          c.result && idSet.has(c.result.id) ? { ...c, result: null } : c
+        );
+        const slotMap = { ...(this.voiceNotes[pd.slot] || {}) };
+        delete slotMap[pd.g.key];
+        this.voiceNotes = { ...this.voiceNotes, [pd.slot]: slotMap };
       },
       async exportCast() {
         window.location.href = "/api/casting/export";

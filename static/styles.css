@@ -843,8 +843,25 @@ body[data-ui="v2"] .vt-xs {
   font-size: var(--fs-xs);
 }
 body[data-ui="v2"] .vt-danger-btn.armed {
+  background: var(--danger);
   border-color: var(--danger);
-  color: var(--danger);
+  color: var(--surface);
+  position: relative;
+  overflow: hidden;
+}
+body[data-ui="v2"] .vt-danger-btn.armed::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.7);
+  animation: vt-arm-countdown 3s linear forwards;
+}
+@keyframes vt-arm-countdown {
+  from { width: 100%; }
+  to   { width: 0; }
 }
 
 /* ── Advanced params panel ── */
@@ -1524,6 +1541,31 @@ body[data-ui="v2"] .vt-save-error {
   align-items: center;
   font-size: var(--fs-sm);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+body[data-ui="v2"] .vt-undo-toast {
+  position: fixed;
+  bottom: var(--sp-5);
+  right: var(--sp-5);
+  z-index: var(--z-palette);
+  background: var(--surface);
+  border: var(--border-w) solid var(--danger);
+  color: var(--text);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius);
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  font-size: var(--fs-sm);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+body[data-ui="v2"] .vt-undo-bar {
+  flex: 1;
+  min-width: 60px;
+  height: 2px;
+  background: var(--danger);
+  animation: vt-arm-countdown 10s linear forwards;
 }
 
 /* ── Help / shortcuts overlay ── */

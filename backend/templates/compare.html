@@ -177,7 +177,7 @@
                     <button class="vt-ghost vt-xs vt-danger-btn"
                       :class="{ armed: deleteArmed === g.key }"
                       @click.stop="confirmDeleteGroup(char.slot, g)"
-                      x-text="deleteArmed === g.key ? 'confirm?' : '✕'"></button>
+                      x-text="deleteArmed === g.key ? 'Delete?' : '✕'"></button>
                   </div>
                 </article>
               </template>
@@ -585,6 +585,13 @@
   <div class="vt-save-error" x-show="saveError" x-cloak>
     <span>Save failed — <span x-text="saveError?.msg"></span></span>
     <button class="vt-ghost vt-xs" @click="saveError = null">Dismiss</button>
+  </div>
+
+  <!-- ──────── Undo-delete toast ──────── -->
+  <div class="vt-undo-toast" x-show="pendingDelete" x-cloak>
+    <span>Deleted <strong x-text="pendingDelete?.g.voice_id"></strong></span>
+    <span class="vt-undo-bar" :key="pendingDelete?.expiresAt"></span>
+    <button class="vt-primary vt-xs" @click="undoDelete()">Undo</button>
   </div>
 
   <!-- ──────── Help overlay (?) ──────── -->
