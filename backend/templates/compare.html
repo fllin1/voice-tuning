@@ -78,6 +78,7 @@
                       x-text="g.marked ? '♥' : '♡'"></button>
                     <span class="vt-cast-badge"
                       x-show="g.samples.some(s => castedResultId(char.slot) === s.id)" title="Cast">CAST</span>
+                    <span class="vt-saved-tick" x-show="savedFlags[g.key]" x-cloak>saved ✓</span>
                   </div>
 
                   <div class="vt-voice-params"
@@ -578,6 +579,12 @@
                     : 'Generate ' + wizardTotalAudios() + ' audio' + (wizardTotalAudios() === 1 ? '' : 's')))"></button>
       </footer>
     </div>
+  </div>
+
+  <!-- ──────── Save-error toast ──────── -->
+  <div class="vt-save-error" x-show="saveError" x-cloak>
+    <span>Save failed — <span x-text="saveError?.msg"></span></span>
+    <button class="vt-ghost vt-xs" @click="saveError = null">Dismiss</button>
   </div>
 
   <!-- ──────── Help overlay (?) ──────── -->

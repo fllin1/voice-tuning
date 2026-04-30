@@ -65,6 +65,8 @@
       selectedMissing: new Set(), // passage ids checked in the open panel
       cardSpeeds: {},          // { groupKey: 1.0 }
       regenerating: null,      // groupKey currently regenerating
+      savedFlags: {},          // { groupKey: timestamp } — drives transient "saved ✓"
+      saveError: null,         // { msg, at } — drives global save-error toast
 
       // ── Generate state ──
       selectedPassageId: null,
@@ -906,36 +908,55 @@
         slotMap[g.key] = { ...(slotMap[g.key] || {}), ...patch };
         this.voiceNotes = { ...this.voiceNotes, [slot]: slotMap };
       },
+      async _putNote(slot, g, body) {
+        try {
+          await api(`/api/voices/${g.engine}/${g.voice_id}/notes?slot=${encodeURIComponent(slot)}`, {
+            method: "PUT",
+            body: JSON.stringify({ params_fp: g.params_fp, ...body }),
+          });
+          this._flagSave(g.key);
+          return true;
+        } catch (e) {
+          this._flagSaveError(e.message);
+          return false;
+        }
+      },
+      _flagSave(key) {
+        this.savedFlags = { ...this.savedFlags, [key]: Date.now() };
+        setTimeout(() => {
+          const { [key]: _drop, ...rest } = this.savedFlags;
+          this.savedFlags = rest;
+        }, 1500);
+      },
+      _flagSaveError(msg) {
+        const at = Date.now();
+        this.saveError = { msg, at };
+        setTimeout(() => {
+          if (this.saveError && this.saveError.at === at) this.saveError = null;
+        }, 4000);
+      },
       async setVoiceStars(slot, g, n) {
         const nv = (g.stars || 0) === n ? null : n;
-        await api(`/api/voices/${g.engine}/${g.voice_id}/notes?slot=${encodeURIComponent(slot)}`, {
-          method: "PUT",
-          body: JSON.stringify({ params_fp: g.params_fp, stars: nv }),
-        });
-        this._updateVoiceNote(slot, g, { stars: nv });
+        if (await this._putNote(slot, g, { stars: nv })) {
+          this._updateVoiceNote(slot, g, { stars: nv });
+        }
       },
       async toggleMarked(slot, g) {
         const nv = !g.marked;
-        await api(`/api/voices/${g.engine}/${g.voice_id}/notes?slot=${encodeURIComponent(slot)}`, {
-          method: "PUT",
-          body: JSON.stringify({ params_fp: g.params_fp, marked: nv }),
-        });
-        this._updateVoiceNote(slot, g, { marked: nv });
+        if (await this._putNote(slot, g, { marked: nv })) {
+          this._updateVoiceNote(slot, g, { marked: nv });
+        }
       },
       async saveVoiceNotes(slot, g, val) {
-        await api(`/api/voices/${g.engine}/${g.voice_id}/notes?slot=${encodeURIComponent(slot)}`, {
-          method: "PUT",
-          body: JSON.stringify({ params_fp: g.params_fp, notes: val || null }),
-        });
-        this._updateVoiceNote(slot, g, { notes: val || null });
+        if (await this._putNote(slot, g, { notes: val || null })) {
+          this._updateVoiceNote(slot, g, { notes: val || null });
+        }
       },
       async saveCardSpeed(slot, g) {
         const speed = +this.cardSpeed(g);
-        await api(`/api/voices/${g.engine}/${g.voice_id}/notes?slot=${encodeURIComponent(slot)}`, {
-          method: "PUT",
-          body: JSON.stringify({ params_fp: g.params_fp, playback_speed: speed }),
-        });
-        this._updateVoiceNote(slot, g, { playback_speed: speed });
+        if (await this._putNote(slot, g, { playback_speed: speed })) {
+          this._updateVoiceNote(slot, g, { playback_speed: speed });
+        }
       },
       cardSpeed(g) {
         if (this.cardSpeeds[g.key] !== undefined) return this.cardSpeeds[g.key];

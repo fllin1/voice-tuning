@@ -1491,14 +1491,31 @@ body[data-ui="v2"] .vt-voice-label {
   font-size: var(--fs-sm);
 }
 
-/* ── Nudge toast ── */
-body[data-ui="v2"] .vt-nudge {
+/* ── Saved indicator + save-error toast ── */
+body[data-ui="v2"] .vt-saved-tick {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent);
+  padding: 1px 6px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.05em;
+  animation: vt-tick-fade 1.5s linear forwards;
+}
+@keyframes vt-tick-fade {
+  0%   { opacity: 0; }
+  15%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+body[data-ui="v2"] .vt-save-error {
   position: fixed;
-  bottom: var(--sp-5);
+  bottom: calc(var(--sp-5) + 60px);
   right: var(--sp-5);
   z-index: var(--z-palette);
   background: var(--surface);
-  border: var(--border-w) solid var(--accent);
+  border: var(--border-w) solid var(--danger);
   color: var(--text);
   padding: var(--sp-3) var(--sp-4);
   border-radius: var(--radius);
