@@ -1208,6 +1208,19 @@ body[data-ui="v2"] .vt-cast-badge {
   border-radius: var(--radius-sm);
   letter-spacing: 0.05em;
 }
+body[data-ui="v2"] .vt-mark {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+body[data-ui="v2"] .vt-mark.on,
+body[data-ui="v2"] .vt-mark:hover {
+  color: var(--danger);
+}
 body[data-ui="v2"] .vt-play {
   align-self: flex-start;
   background: transparent;

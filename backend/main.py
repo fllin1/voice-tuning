@@ -127,6 +127,7 @@ def _build_bootstrap() -> dict:
                 "notes": row["notes"],
                 "stars": row["stars"],
                 "playback_speed": row.get("playback_speed"),
+                "marked": bool(row.get("marked", False)),
             }
             for (e, v, fp), row in db.get_voice_notes(c.slot).items()
         }

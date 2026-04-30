@@ -14,6 +14,7 @@ class VoiceNoteIn(BaseModel):
     notes: str | None = None
     stars: int | None = None
     playback_speed: float | None = None
+    marked: bool | None = None
 
 
 class VoiceProfileIn(BaseModel):
@@ -65,6 +66,7 @@ def get_voice_note(engine: str, voice_id: str, slot: str, params_fp: str = "") -
         "notes": row.get("notes"),
         "stars": row.get("stars"),
         "playback_speed": row.get("playback_speed"),
+        "marked": bool(row.get("marked", False)),
     }
 
 
@@ -86,6 +88,8 @@ def put_voice_notes(engine: str, voice_id: str, slot: str, body: VoiceNoteIn) ->
         if ps is not None and not (0.5 <= ps <= 2.0):
             raise HTTPException(400, "playback_speed must be between 0.5 and 2.0")
         kwargs["playback_speed"] = ps
+    if "marked" in provided:
+        kwargs["marked"] = int(bool(body.marked))
     db.upsert_voice_note(engine, voice_id, slot, body.params_fp, **kwargs)
     return {"ok": True}
 

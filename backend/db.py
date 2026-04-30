@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS voice_notes (
     notes TEXT,
     stars INTEGER CHECK(stars BETWEEN 1 AND 5),
     playback_speed REAL,
+    marked INTEGER NOT NULL DEFAULT 0,
     updated_at INTEGER NOT NULL,
     PRIMARY KEY (engine, voice_id, slot, params_fp)
 );
@@ -119,6 +120,9 @@ def _migrate(db_path: Path | None = None) -> None:
         if ver < 6:
             _migrate_v6(conn)
             conn.execute("PRAGMA user_version = 6")
+        if ver < 7:
+            _migrate_v7(conn)
+            conn.execute("PRAGMA user_version = 7")
         conn.commit()
 
 
@@ -245,6 +249,16 @@ def _migrate_v6(conn: sqlite3.Connection) -> None:
     cols = [r["name"] for r in conn.execute("PRAGMA table_info(voice_notes)").fetchall()]
     if "playback_speed" not in cols:
         conn.execute("ALTER TABLE voice_notes ADD COLUMN playback_speed REAL")
+
+
+def _migrate_v7(conn: sqlite3.Connection) -> None:
+    # voice_notes gains `marked` (per-voice favourite toggle, separate from
+    # the 1-5 star rating so triage and shortlisting are decoupled).
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(voice_notes)").fetchall()]
+    if "marked" not in cols:
+        conn.execute(
+            "ALTER TABLE voice_notes ADD COLUMN marked INTEGER NOT NULL DEFAULT 0"
+        )
 
 
 # Character slot order (matches casting presentation order).
@@ -484,7 +498,8 @@ def get_voice_notes(slot: str | None = None) -> dict[tuple[str, str, str], dict]
         return {}
     with connect() as conn:
         rows = conn.execute(
-            "SELECT engine, voice_id, params_fp, notes, stars, playback_speed "
+            "SELECT engine, voice_id, params_fp, notes, stars, "
+            "       playback_speed, marked "
             "FROM voice_notes WHERE slot = ?",
             (slot,),
         ).fetchall()
@@ -493,6 +508,7 @@ def get_voice_notes(slot: str | None = None) -> dict[tuple[str, str, str], dict]
             "notes": r["notes"],
             "stars": r["stars"],
             "playback_speed": r["playback_speed"],
+            "marked": bool(r["marked"]),
         }
         for r in rows
     }
@@ -507,16 +523,17 @@ def upsert_voice_note(
     notes=_UNSET,
     stars=_UNSET,
     playback_speed=_UNSET,
+    marked=_UNSET,
 ) -> None:
     """Partial-update a voice-note bucket.
 
     Unspecified fields (left as _UNSET) preserve their existing values.
-    When the row ends up empty (no notes, stars, nor playback_speed),
-    it is deleted to keep the table clean.
+    When the row ends up empty (no notes, stars, playback_speed, nor
+    marked), it is deleted to keep the table clean.
     """
     with connect() as conn:
         existing = conn.execute(
-            "SELECT notes, stars, playback_speed FROM voice_notes "
+            "SELECT notes, stars, playback_speed, marked FROM voice_notes "
             "WHERE engine = ? AND voice_id = ? AND slot = ? AND params_fp = ?",
             (engine, voice_id, slot, params_fp),
         ).fetchone()
@@ -526,7 +543,11 @@ def upsert_voice_note(
             (existing["playback_speed"] if existing else None)
             if playback_speed is _UNSET else playback_speed
         )
-        if not new_notes and new_stars is None and new_speed is None:
+        new_marked = (
+            (existing["marked"] if existing else 0)
+            if marked is _UNSET else int(bool(marked))
+        )
+        if not new_notes and new_stars is None and new_speed is None and not new_marked:
             conn.execute(
                 "DELETE FROM voice_notes "
                 "WHERE engine = ? AND voice_id = ? AND slot = ? AND params_fp = ?",
@@ -535,13 +556,16 @@ def upsert_voice_note(
             return
         conn.execute(
             "INSERT INTO voice_notes "
-            "(engine, voice_id, slot, params_fp, notes, stars, playback_speed, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            "(engine, voice_id, slot, params_fp, notes, stars, "
+            " playback_speed, marked, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(engine, voice_id, slot, params_fp) DO UPDATE SET "
             "notes = excluded.notes, stars = excluded.stars, "
             "playback_speed = excluded.playback_speed, "
+            "marked = excluded.marked, "
             "updated_at = excluded.updated_at",
-            (engine, voice_id, slot, params_fp, new_notes, new_stars, new_speed, now_ms()),
+            (engine, voice_id, slot, params_fp, new_notes, new_stars,
+             new_speed, new_marked, now_ms()),
         )
 
 

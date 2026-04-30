@@ -50,11 +50,11 @@
       activeSlot: null,
       collapsed: new Set(),
       filterMin: false,
+      filterMarked: false,
       advancedOpen: false,
       advancedValues: {},
       popover: { open: null },
       palette: { open: false, query: "" },
-      nudge: { open: false, slot: null, voice: null, label: null, resultId: null },
       deleteArmed: null,       // group key currently armed for delete
       deleteArmTimer: null,
       focusedGroupKey: null,   // voice-level keyboard focus (data-group-key)
@@ -197,10 +197,11 @@
           groups.get(key).samples.push(r);
         }
         const slotNotes = this.voiceNotes[slot] || {};
-        const out = Array.from(groups.values()).map(g => {
+        let out = Array.from(groups.values()).map(g => {
           const meta = slotNotes[g.key] || {};
           g.notes = meta.notes || "";
           g.stars = meta.stars || 0;
+          g.marked = !!meta.marked;
           // Most-recent sample first; drives cast / regenerate template.
           g.samples.sort((a, b) => b.id - a.id);
           return g;
@@ -213,7 +214,8 @@
           if (aa !== bb) return bb - aa;
           return (b.samples[0]?.id || 0) - (a.samples[0]?.id || 0);
         });
-        if (this.filterMin) return out.filter(g => (g.stars || 0) >= 4);
+        if (this.filterMin) out = out.filter(g => (g.stars || 0) >= 4);
+        if (this.filterMarked) out = out.filter(g => g.marked);
         return out;
       },
       slotStarSummary(slot) {
@@ -911,20 +913,14 @@
           body: JSON.stringify({ params_fp: g.params_fp, stars: nv }),
         });
         this._updateVoiceNote(slot, g, { stars: nv });
-        // 5★ + empty slot nudge (on the most-recent sample of the group).
-        if (nv === 5 && !this.castedResultId(slot)) {
-          const src = g.samples[0];
-          const char = this.characters.find(c => c.slot === slot);
-          if (src && char) {
-            this.nudge = {
-              open: true,
-              slot,
-              voice: g.voice_id,
-              label: char.label + (char.variant ? " · " + char.variant : ""),
-              resultId: src.id,
-            };
-          }
-        }
+      },
+      async toggleMarked(slot, g) {
+        const nv = !g.marked;
+        await api(`/api/voices/${g.engine}/${g.voice_id}/notes?slot=${encodeURIComponent(slot)}`, {
+          method: "PUT",
+          body: JSON.stringify({ params_fp: g.params_fp, marked: nv }),
+        });
+        this._updateVoiceNote(slot, g, { marked: nv });
       },
       async saveVoiceNotes(slot, g, val) {
         await api(`/api/voices/${g.engine}/${g.voice_id}/notes?slot=${encodeURIComponent(slot)}`, {
@@ -1095,20 +1091,17 @@
       },
       async _doDeleteGroup(slot, g) {
         await this._doDelete(g.samples);
-        // Clear the voice-note row (backend auto-deletes when both empty).
+        // Clear every field so backend auto-deletes the voice-note row.
         await api(`/api/voices/${g.engine}/${g.voice_id}/notes?slot=${encodeURIComponent(slot)}`, {
           method: "PUT",
-          body: JSON.stringify({ params_fp: g.params_fp, notes: null, stars: null }),
+          body: JSON.stringify({
+            params_fp: g.params_fp,
+            notes: null, stars: null, playback_speed: null, marked: false,
+          }),
         });
         const slotMap = { ...(this.voiceNotes[slot] || {}) };
         delete slotMap[g.key];
         this.voiceNotes = { ...this.voiceNotes, [slot]: slotMap };
-      },
-      async acceptNudge() {
-        const { slot, resultId } = this.nudge;
-        const r = this.results.find(x => x.id === resultId);
-        if (r && slot) await this.castAs(r, slot);
-        this.nudge.open = false;
       },
       async exportCast() {
         window.location.href = "/api/casting/export";
@@ -1220,6 +1213,11 @@
         if (!e) return;
         this.confirmDeleteGroup(e.slot, e.g);
       },
+      markFocused() {
+        const e = this.focusedEntry();
+        if (!e) return;
+        this.toggleMarked(e.slot, e.g);
+      },
 
       // ─────────── keyboard ───────────
       onKey(ev) {
@@ -1240,10 +1238,10 @@
         if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
 
         // Esc — close help, disarm delete, or clear focus.
-        // (Other modals — wizard, palette, nudge — own their own Esc handlers.)
+        // (Other modals — wizard, palette — own their own Esc handlers.)
         if (ev.key === "Escape") {
           if (this.helpOpen) { this.helpOpen = false; return; }
-          if (this.wizard.open || this.palette.open || this.nudge.open) return;
+          if (this.wizard.open || this.palette.open) return;
           if (this.deleteArmed) {
             this.deleteArmed = null;
             clearTimeout(this.deleteArmTimer);
@@ -1260,7 +1258,7 @@
           return;
         }
         // While a modal is open, only Esc / ⌘K / ? above are honored.
-        if (this.helpOpen || this.wizard.open || this.palette.open || this.nudge.open) return;
+        if (this.helpOpen || this.wizard.open || this.palette.open) return;
 
         // Collapse / expand all (preserve existing).
         if (ev.key === "g") {
@@ -1300,6 +1298,7 @@
         // Actions.
         if (ev.key === "c") { this.castFocused(); return; }
         if (ev.key === "x") { this.deleteFocused(); return; }
+        if (ev.key === "m") { this.markFocused(); return; }
         if (ev.key === "n") { this.openWizard(); return; }
       },
     };
