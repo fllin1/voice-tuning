@@ -31,6 +31,15 @@ SLOTS: list[str] = [c.slot for c in CHARACTERS]
 BY_SLOT: dict[str, Character] = {c.slot: c for c in CHARACTERS}
 
 
+# Short neutral line used as the canonical tryout for a voice that has no
+# prior generated result. Kept short (sub-15 words) so it's cheap to generate
+# and easy to compare across voices. Content-addressed cache makes repeat
+# tryouts free.
+TRYOUT_TEXT = (
+    "In the long run, your voice will say more about you than your words."
+)
+
+
 def is_valid_slot(slot: str) -> bool:
     return slot in BY_SLOT
 
