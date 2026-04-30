@@ -19,3 +19,7 @@ audio_cache/
 .playwright-mcp/
 /*.png
 
+# Local UX-review artifacts (multi-persona analyses + screenshot dumps)
+images/
+reviews/
+
