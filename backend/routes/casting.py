@@ -82,6 +82,14 @@ def export_casting():
     for c in characters.CHARACTERS:
         entry = state.get(c.slot)
         result = db.get_result(entry["result_id"]) if entry and entry["result_id"] else None
+        playback_speed = 1.0
+        if result:
+            fp = db.params_fingerprint(result.get("params"))
+            note = db.get_voice_notes(c.slot).get(
+                (result["engine"], result["voice_id"], fp)
+            )
+            if note and note.get("playback_speed") is not None:
+                playback_speed = note["playback_speed"]
         payload["cast"].append({
             "slot": c.slot,
             "label": c.label,
@@ -90,6 +98,7 @@ def export_casting():
             "voice_id": result["voice_id"] if result else None,
             "speed": result["speed"] if result else None,
             "params": result["params"] if result else None,
+            "playback_speed": playback_speed if result else None,
             "notes": entry["notes"] if entry else None,
         })
     blob = json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8")

@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS voice_notes (
     params_fp TEXT NOT NULL DEFAULT '',
     notes TEXT,
     stars INTEGER CHECK(stars BETWEEN 1 AND 5),
+    playback_speed REAL,
     updated_at INTEGER NOT NULL,
     PRIMARY KEY (engine, voice_id, slot, params_fp)
 );
@@ -115,6 +116,9 @@ def _migrate(db_path: Path | None = None) -> None:
         if ver < 5:
             _migrate_v5(conn)
             conn.execute("PRAGMA user_version = 5")
+        if ver < 6:
+            _migrate_v6(conn)
+            conn.execute("PRAGMA user_version = 6")
         conn.commit()
 
 
@@ -232,6 +236,15 @@ def _migrate_v5(conn: sqlite3.Connection) -> None:
     )
     conn.execute("DROP TABLE voice_notes")
     conn.execute("ALTER TABLE voice_notes_new RENAME TO voice_notes")
+
+
+def _migrate_v6(conn: sqlite3.Connection) -> None:
+    # voice_notes gains `playback_speed` (per voice-card audition rate, saved
+    # explicitly via the "Save speed" button). Slot-scoped, separate from the
+    # generation `speed` baked into the audio file.
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(voice_notes)").fetchall()]
+    if "playback_speed" not in cols:
+        conn.execute("ALTER TABLE voice_notes ADD COLUMN playback_speed REAL")
 
 
 # Character slot order (matches casting presentation order).
@@ -471,13 +484,16 @@ def get_voice_notes(slot: str | None = None) -> dict[tuple[str, str, str], dict]
         return {}
     with connect() as conn:
         rows = conn.execute(
-            "SELECT engine, voice_id, params_fp, notes, stars "
+            "SELECT engine, voice_id, params_fp, notes, stars, playback_speed "
             "FROM voice_notes WHERE slot = ?",
             (slot,),
         ).fetchall()
     return {
-        (r["engine"], r["voice_id"], r["params_fp"]):
-            {"notes": r["notes"], "stars": r["stars"]}
+        (r["engine"], r["voice_id"], r["params_fp"]): {
+            "notes": r["notes"],
+            "stars": r["stars"],
+            "playback_speed": r["playback_speed"],
+        }
         for r in rows
     }
 
@@ -490,22 +506,27 @@ def upsert_voice_note(
     *,
     notes=_UNSET,
     stars=_UNSET,
+    playback_speed=_UNSET,
 ) -> None:
     """Partial-update a voice-note bucket.
 
     Unspecified fields (left as _UNSET) preserve their existing values.
-    When the row ends up with both notes and stars empty/None, it is
-    deleted to keep the table clean.
+    When the row ends up empty (no notes, stars, nor playback_speed),
+    it is deleted to keep the table clean.
     """
     with connect() as conn:
         existing = conn.execute(
-            "SELECT notes, stars FROM voice_notes "
+            "SELECT notes, stars, playback_speed FROM voice_notes "
             "WHERE engine = ? AND voice_id = ? AND slot = ? AND params_fp = ?",
             (engine, voice_id, slot, params_fp),
         ).fetchone()
         new_notes = (existing["notes"] if existing else None) if notes is _UNSET else notes
         new_stars = (existing["stars"] if existing else None) if stars is _UNSET else stars
-        if not new_notes and new_stars is None:
+        new_speed = (
+            (existing["playback_speed"] if existing else None)
+            if playback_speed is _UNSET else playback_speed
+        )
+        if not new_notes and new_stars is None and new_speed is None:
             conn.execute(
                 "DELETE FROM voice_notes "
                 "WHERE engine = ? AND voice_id = ? AND slot = ? AND params_fp = ?",
@@ -514,12 +535,13 @@ def upsert_voice_note(
             return
         conn.execute(
             "INSERT INTO voice_notes "
-            "(engine, voice_id, slot, params_fp, notes, stars, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "(engine, voice_id, slot, params_fp, notes, stars, playback_speed, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(engine, voice_id, slot, params_fp) DO UPDATE SET "
             "notes = excluded.notes, stars = excluded.stars, "
+            "playback_speed = excluded.playback_speed, "
             "updated_at = excluded.updated_at",
-            (engine, voice_id, slot, params_fp, new_notes, new_stars, now_ms()),
+            (engine, voice_id, slot, params_fp, new_notes, new_stars, new_speed, now_ms()),
         )
 
 

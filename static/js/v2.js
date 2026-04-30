@@ -60,6 +60,9 @@
       focusedGroupKey: null,   // voice-level keyboard focus (data-group-key)
       focusedSampleId: null,   // dialogue-row focus within the focused voice
       helpOpen: false,         // ?-overlay
+      lastPlayedSampleId: null, // page-wide marker for the most-recently played dialogue
+      otherDialoguesOpen: null, // group key whose "+ dialogues" panel is open
+      selectedMissing: new Set(), // passage ids checked in the open panel
       cardSpeeds: {},          // { groupKey: 1.0 }
       regenerating: null,      // groupKey currently regenerating
 
@@ -871,7 +874,7 @@
 
       // ─────────── per-card actions ───────────
       playResult(r) {
-        // Update keyboard focus to the sample being played (when it belongs to a known group).
+        // Update keyboard focus + last-played marker for samples that belong to a known group.
         if (r && r.passage_id) {
           const slot = this._passageToSlot[r.passage_id];
           if (slot) {
@@ -879,6 +882,7 @@
             this.focusedSampleId = r.id;
           }
         }
+        if (r && r.id) this.lastPlayedSampleId = r.id;
         return this._playResult(r);
       },
       _playResult(r) {
@@ -886,6 +890,12 @@
         const el = this.audioEl;
         if (this.currentAudioId === r.id && !el.paused) { el.pause(); return; }
         el.src = r.audio_url;
+        const fp = this.paramsFp(r);
+        const slot = r.passage_id ? this._passageToSlot[r.passage_id] : null;
+        const g = slot
+          ? this.groupedResults(slot).find(x => x.key === this.groupKey(r.engine, r.voice_id, fp))
+          : null;
+        el.playbackRate = g ? +this.cardSpeed(g) : 1.0;
         this.currentAudioId = r.id;
         el.play().catch(() => {});
       },
@@ -923,18 +933,84 @@
         });
         this._updateVoiceNote(slot, g, { notes: val || null });
       },
+      async saveCardSpeed(slot, g) {
+        const speed = +this.cardSpeed(g);
+        await api(`/api/voices/${g.engine}/${g.voice_id}/notes?slot=${encodeURIComponent(slot)}`, {
+          method: "PUT",
+          body: JSON.stringify({ params_fp: g.params_fp, playback_speed: speed }),
+        });
+        this._updateVoiceNote(slot, g, { playback_speed: speed });
+      },
       cardSpeed(g) {
         if (this.cardSpeeds[g.key] !== undefined) return this.cardSpeeds[g.key];
-        return +(g.samples[0]?.speed ?? 1.0);
+        const saved = this.savedSpeed(g);
+        return saved !== null ? +saved : 1.0;
+      },
+      savedSpeed(g) {
+        // Voice notes are slot-scoped; walk this group's samples to find the
+        // owning slot and return its saved playback_speed (or null).
+        for (const s of g.samples) {
+          const slot = s.passage_id ? this._passageToSlot[s.passage_id] : null;
+          if (!slot) continue;
+          const v = this.voiceNotes[slot]?.[g.key]?.playback_speed;
+          if (v != null) return +v;
+        }
+        return null;
       },
       setCardSpeed(g, v) {
-        this.cardSpeeds = { ...this.cardSpeeds, [g.key]: +v };
+        const speed = +v;
+        this.cardSpeeds = { ...this.cardSpeeds, [g.key]: speed };
+        // Live drag: if a sample from this group is currently playing, retune now.
+        if (this.currentAudioId && g.samples.some(s => s.id === this.currentAudioId)) {
+          if (this.audioEl) this.audioEl.playbackRate = speed;
+        }
       },
-      async regenerateAtSpeed(slot, g) {
+      missingPassagesFor(slot, g) {
+        const haveIds = new Set(g.samples.map(s => s.passage_id).filter(Boolean));
+        return this.passages.filter(p => p.character_slot === slot && !haveIds.has(p.id));
+      },
+      toggleOtherDialogues(g) {
+        if (this.otherDialoguesOpen === g.key) {
+          this.otherDialoguesOpen = null;
+          this.selectedMissing = new Set();
+        } else {
+          this.otherDialoguesOpen = g.key;
+          this.selectedMissing = new Set();
+        }
+      },
+      toggleMissingPassage(pid) {
+        const next = new Set(this.selectedMissing);
+        if (next.has(pid)) next.delete(pid); else next.add(pid);
+        this.selectedMissing = next;
+      },
+      async generateOtherDialogues(slot, g) {
+        if (this.regenerating) return;
+        const ids = Array.from(this.selectedMissing);
+        if (!ids.length) return;
+        const params = Object.keys(g.params).length ? g.params : null;
+        this.regenerating = g.key;
+        try {
+          for (const pid of ids) {
+            const { batch_id } = await api("/api/generate", {
+              method: "POST",
+              body: JSON.stringify({
+                passage_id: pid,
+                jobs: [{ engine: g.engine, voice_id: g.voice_id, speed: 1.0, params }],
+              }),
+            });
+            await this.pollBatch(batch_id);
+          }
+          await this.refreshResults();
+        } finally {
+          this.regenerating = null;
+          this.otherDialoguesOpen = null;
+          this.selectedMissing = new Set();
+        }
+      },
+      async regenerate(slot, g) {
         if (this.regenerating) return;
         const src = g.samples[0];
         if (!src || !src.passage_id) return;
-        const speed = this.cardSpeed(g);
         this.regenerating = g.key;
         try {
           const { batch_id } = await api("/api/generate", {
@@ -944,7 +1020,7 @@
               jobs: [{
                 engine: g.engine,
                 voice_id: g.voice_id,
-                speed,
+                speed: 1.0,
                 params: Object.keys(g.params).length ? g.params : null,
               }],
             }),

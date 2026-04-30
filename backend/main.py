@@ -123,7 +123,11 @@ def _build_bootstrap() -> dict:
     voice_notes: dict[str, dict] = {}
     for c in characters.CHARACTERS:
         voice_notes[c.slot] = {
-            f"{e}|{v}|{fp}": {"notes": row["notes"], "stars": row["stars"]}
+            f"{e}|{v}|{fp}": {
+                "notes": row["notes"],
+                "stars": row["stars"],
+                "playback_speed": row.get("playback_speed"),
+            }
             for (e, v, fp), row in db.get_voice_notes(c.slot).items()
         }
 

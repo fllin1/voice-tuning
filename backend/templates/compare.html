@@ -73,25 +73,29 @@
                       x-show="g.samples.some(s => castedResultId(char.slot) === s.id)" title="Cast">CAST</span>
                   </div>
 
-                  <div class="vt-voice-params" x-html="paramChipsForGroup(g)"
-                    x-show="Object.keys(g.params).length > 0"></div>
+                  <div class="vt-voice-params"
+                    x-show="Object.keys(g.params).length > 0 || savedSpeed(g) !== null">
+                    <span x-html="paramChipsForGroup(g)"></span>
+                    <span class="vt-param vt-param-speed"
+                      x-show="savedSpeed(g) !== null"
+                      x-text="(+savedSpeed(g)).toFixed(2) + '× saved'"
+                      title="Saved playback speed"></span>
+                  </div>
 
                   <ul class="vt-voice-dialogues">
                     <template x-for="s in g.samples" :key="s.id">
                       <li class="vt-dialogue-row"
                         :class="{
                           playing: currentAudioId === s.id && audioPlaying,
+                          'last-played': lastPlayedSampleId === s.id && !(currentAudioId === s.id && audioPlaying),
                           focused: focusedGroupKey === g.key && focusedSampleId === s.id
                         }"
-                        @click.stop="setFocus(char.slot, g, s.id)">
-                        <span class="vt-dialogue-marker" aria-hidden="true">•</span>
+                        @click.stop="setFocus(char.slot, g, s.id); playResult(s)"
+                        :title="passageTitleFor(s) + ' · ' + (+s.speed).toFixed(2) + '×'">
+                        <span class="vt-dialogue-icon" aria-hidden="true"
+                          x-text="currentAudioId === s.id && audioPlaying ? '❚❚' : '▶'"></span>
                         <span class="vt-dialogue-title" x-text="passageTitleFor(s)"></span>
                         <span class="vt-dialogue-speed" x-text="(+s.speed).toFixed(2) + '×'"></span>
-                        <button class="vt-dialogue-play"
-                          :class="{ playing: currentAudioId === s.id && audioPlaying }"
-                          @click.stop="setFocus(char.slot, g, s.id); playResult(s)"
-                          :title="passageTitleFor(s) + ' · ' + (+s.speed).toFixed(2) + '×'"
-                          x-text="currentAudioId === s.id && audioPlaying ? '❚❚' : '▶'"></button>
                       </li>
                     </template>
                   </ul>
@@ -115,9 +119,47 @@
                       @input="setCardSpeed(g, $event.target.value)">
                     <span class="vt-mini vt-voice-speed-val" x-text="(+cardSpeed(g)).toFixed(2) + '×'"></span>
                     <button class="vt-ghost vt-xs"
+                      :disabled="+cardSpeed(g) === +(savedSpeed(g) ?? 1.0)"
+                      @click.stop="saveCardSpeed(char.slot, g)"
+                      :title="savedSpeed(g) === null ? 'Save current speed for this voice' : 'Update saved speed (currently ' + (+savedSpeed(g)).toFixed(2) + '×)'"
+                      x-text="+cardSpeed(g) === +(savedSpeed(g) ?? 1.0) ? 'Saved' : 'Save speed'"></button>
+                    <button class="vt-ghost vt-xs"
                       :disabled="regenerating === g.key || !g.samples[0]?.passage_id"
-                      @click="regenerateAtSpeed(char.slot, g)"
+                      @click.stop="regenerate(char.slot, g)"
+                      title="Regenerate this dialogue at 1.00× with the same engine, voice, and params"
                       x-text="regenerating === g.key ? '…' : 'Regenerate'"></button>
+                    <button class="vt-ghost vt-xs"
+                      :disabled="regenerating === g.key || missingPassagesFor(char.slot, g).length === 0"
+                      :title="missingPassagesFor(char.slot, g).length + ' other dialogue(s) for ' + char.label"
+                      @click.stop="toggleOtherDialogues(g)"
+                      x-text="otherDialoguesOpen === g.key ? 'Cancel' : '+ dialogues'"></button>
+                  </div>
+
+                  <div class="vt-other-dialogues" x-show="otherDialoguesOpen === g.key" x-cloak>
+                    <div class="vt-mini vt-other-dialogues-head">
+                      Generate <strong x-text="g.voice_id"></strong> on other dialogues
+                    </div>
+                    <div class="vt-other-dialogues-list">
+                      <template x-for="p in missingPassagesFor(char.slot, g)" :key="p.id">
+                        <label class="vt-other-dialogue-row" @click.stop>
+                          <input type="checkbox"
+                            :checked="selectedMissing.has(p.id)"
+                            @change="toggleMissingPassage(p.id)">
+                          <span x-text="p.title"></span>
+                        </label>
+                      </template>
+                      <div class="vt-mini" x-show="missingPassagesFor(char.slot, g).length === 0">
+                        Already covers every dialogue for this character.
+                      </div>
+                    </div>
+                    <div class="vt-other-dialogues-actions">
+                      <button class="vt-primary vt-xs"
+                        :disabled="!selectedMissing.size || regenerating === g.key"
+                        @click.stop="generateOtherDialogues(char.slot, g)"
+                        x-text="regenerating === g.key
+                          ? 'Generating…'
+                          : (selectedMissing.size ? 'Generate ' + selectedMissing.size : 'Pick dialogues')"></button>
+                    </div>
                   </div>
 
                   <div class="vt-card-actions">

@@ -13,6 +13,7 @@ class VoiceNoteIn(BaseModel):
     params_fp: str = ""
     notes: str | None = None
     stars: int | None = None
+    playback_speed: float | None = None
 
 
 class VoiceProfileIn(BaseModel):
@@ -60,7 +61,11 @@ def get_voice_note(engine: str, voice_id: str, slot: str, params_fp: str = "") -
     if not characters.is_valid_slot(slot):
         raise HTTPException(400, f"unknown slot: {slot}")
     row = db.get_voice_notes(slot).get((engine, voice_id, params_fp)) or {}
-    return {"notes": row.get("notes"), "stars": row.get("stars")}
+    return {
+        "notes": row.get("notes"),
+        "stars": row.get("stars"),
+        "playback_speed": row.get("playback_speed"),
+    }
 
 
 @router.put("/api/voices/{engine}/{voice_id}/notes")
@@ -76,6 +81,11 @@ def put_voice_notes(engine: str, voice_id: str, slot: str, body: VoiceNoteIn) ->
         kwargs["notes"] = body.notes
     if "stars" in provided:
         kwargs["stars"] = body.stars
+    if "playback_speed" in provided:
+        ps = body.playback_speed
+        if ps is not None and not (0.5 <= ps <= 2.0):
+            raise HTTPException(400, "playback_speed must be between 0.5 and 2.0")
+        kwargs["playback_speed"] = ps
     db.upsert_voice_note(engine, voice_id, slot, body.params_fp, **kwargs)
     return {"ok": True}
 
