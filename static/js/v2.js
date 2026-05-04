@@ -7,6 +7,8 @@
   const LS_ADV_VALUES = "vt_advanced_values";
   const LS_ADV_OPEN   = "vt_advanced_open";
   const LS_COLLAPSED  = "vt_collapsed_slots";
+  const LS_PICKER     = "vt:picker:v1";
+  const PICKER_SCHEMA_VERSION = 1;
 
   function api(path, opts = {}) {
     return fetch(path, {
@@ -23,6 +25,16 @@
     catch { return fallback; }
   }
   function saveLS(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+
+  // Picker (wizard) state persistence — versioned blob, drop on mismatch.
+  function loadPicker() {
+    const raw = loadLS(LS_PICKER, null);
+    if (!raw || raw.v !== PICKER_SCHEMA_VERSION) return null;
+    return raw.data || null;
+  }
+  function savePicker(data) {
+    saveLS(LS_PICKER, { v: PICKER_SCHEMA_VERSION, data });
+  }
 
   function escapeHtml(s) {
     return String(s ?? "").replace(/[&<>"']/g, c => (
@@ -141,6 +153,65 @@
         this.collapsed = new Set(collapsedArr);
 
         this.activeSlot = this.characters[0]?.slot || null;
+
+        // Hydrate persisted wizard / picker state. Stale (deleted) passage
+        // and voice ids are filtered out so the UI never references missing
+        // bootstrap rows.
+        const picker = loadPicker();
+        if (picker) {
+          if (picker.activeSlot) this.activeSlot = picker.activeSlot;
+          this.wizard.filterSlot = picker.filterSlot ?? null;
+          this.wizard.selectedPassageIds = new Set(picker.selectedPassageIds || []);
+          this.wizard.customText = picker.customText || "";
+          this.wizard.customTextSlot = picker.customTextSlot ?? null;
+          this.wizard.selectedVoicesBySlot = picker.selectedVoicesBySlot || {};
+          this.wizard.voiceQuery = picker.voiceQuery || "";
+          this.wizard.filterEngines = picker.filterEngines || {};
+          this.wizard.filterGenders = picker.filterGenders || {};
+          this.wizard.filterAccents = picker.filterAccents || {};
+          this.wizard.filterTraits = picker.filterTraits || {};
+          this.wizard.perVoiceParams = picker.perVoiceParams || {};
+          this.wizard.expandedParams = picker.expandedParams || {};
+
+          const passageIds = new Set(this.passages.map(p => p.id));
+          this.wizard.selectedPassageIds = new Set(
+            [...this.wizard.selectedPassageIds].filter(id => passageIds.has(id))
+          );
+          const validVoices = new Set();
+          for (const e of this.engines) {
+            for (const v of (e.voices || [])) validVoices.add(`${e.engine}|${v.id}`);
+          }
+          for (const slot in this.wizard.selectedVoicesBySlot) {
+            for (const k in this.wizard.selectedVoicesBySlot[slot]) {
+              if (!validVoices.has(k)) delete this.wizard.selectedVoicesBySlot[slot][k];
+            }
+          }
+        }
+
+        // Debounced auto-save of picker state on any change.
+        this._pickerSaveTimer = null;
+        const queueSave = () => {
+          clearTimeout(this._pickerSaveTimer);
+          this._pickerSaveTimer = setTimeout(() => {
+            savePicker({
+              activeSlot: this.activeSlot,
+              filterSlot: this.wizard.filterSlot,
+              selectedPassageIds: [...this.wizard.selectedPassageIds],
+              customText: this.wizard.customText,
+              customTextSlot: this.wizard.customTextSlot,
+              selectedVoicesBySlot: this.wizard.selectedVoicesBySlot,
+              voiceQuery: this.wizard.voiceQuery,
+              filterEngines: this.wizard.filterEngines,
+              filterGenders: this.wizard.filterGenders,
+              filterAccents: this.wizard.filterAccents,
+              filterTraits: this.wizard.filterTraits,
+              perVoiceParams: this.wizard.perVoiceParams,
+              expandedParams: this.wizard.expandedParams,
+            });
+          }, 300);
+        };
+        this.$watch("activeSlot", queueSave);
+        this.$watch("wizard", queueSave, { deep: true });
 
         this.audioEl = document.getElementById("vt-audio");
         this.audioEl.addEventListener("play",  () => { this.audioPlaying = true; });
