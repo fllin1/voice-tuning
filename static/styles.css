@@ -1300,6 +1300,23 @@ body[data-ui="v2"] .vt-empty-group {
   text-align: center;
   font-style: italic;
 }
+body[data-ui="v2"] .vt-empty-group .vt-ghost {
+  margin-top: var(--sp-2);
+}
+
+body[data-ui="v2"] .vt-empty-cold {
+  text-align: center;
+  padding: var(--sp-8) var(--sp-5);
+  color: var(--text-muted);
+}
+body[data-ui="v2"] .vt-empty-cold-title {
+  font-size: var(--fs-xl);
+  margin-bottom: var(--sp-3);
+  color: var(--text);
+}
+body[data-ui="v2"] .vt-empty-cold-body {
+  font-size: var(--fs-md);
+}
 
 /* ── Right rail ── */
 body[data-ui="v2"] .vt-rail {
@@ -1394,6 +1411,12 @@ body[data-ui="v2"] .vt-rail-row-cast {
   color: var(--text-dim);
   font-size: var(--fs-xs);
   white-space: nowrap;
+}
+body[data-ui="v2"] .vt-rail-row-cast.vt-rail-row-cast-empty {
+  font-family: var(--font-sans);
+  font-style: italic;
+  color: var(--text-muted);
+  text-transform: none;
 }
 body[data-ui="v2"] .vt-export {
   margin-top: var(--sp-4);

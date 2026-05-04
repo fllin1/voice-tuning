@@ -47,6 +47,12 @@
   <div class="vt-layout">
 
     <main class="vt-main">
+      <template x-if="results.length === 0">
+        <div class="vt-empty-cold">
+          <div class="vt-empty-cold-title">No takes yet.</div>
+          <div class="vt-empty-cold-body">Pick a slot, choose an engine + voice, then <strong>Generate</strong>.</div>
+        </div>
+      </template>
       <template x-for="char in characters" :key="char.slot">
         <section class="vt-group" :class="{ active: activeSlot === char.slot, collapsed: collapsed.has(char.slot) }" :id="'group-' + char.slot">
           <header class="vt-group-header" @click="selectSlot(char.slot)">
@@ -186,45 +192,58 @@
                 </article>
               </template>
 
-              <div class="vt-empty-group" x-show="groupedResults(char.slot).length === 0">
-                <span x-text="filterMin ? 'No ≥4★ voices yet.' : 'No audition yet for ' + char.label + '.'"></span>
-              </div>
+              <template x-if="groupedResults(char.slot).length === 0">
+                <div class="vt-empty-group">
+                  <template x-if="filterMin || filterMarked">
+                    <div>
+                      <span>No voices match — try clearing
+                        <span x-show="filterMin">≥4★</span><span x-show="filterMin && filterMarked"> or </span><span x-show="filterMarked">♡</span>.
+                      </span>
+                      <button class="vt-ghost vt-xs" @click="filterMin = false; filterMarked = false;">Clear filters</button>
+                    </div>
+                  </template>
+                  <template x-if="!filterMin && !filterMarked">
+                    <span x-text="'No audition yet for ' + char.label + '.'"></span>
+                  </template>
+                </div>
+              </template>
             </div>
 
           </div>
         </section>
       </template>
 
-      <section class="vt-group" :class="{ collapsed: collapsed.has('__unassigned__') }">
-        <header class="vt-group-header" @click="toggleGroup('__unassigned__')">
-          <span class="vt-caret" x-text="collapsed.has('__unassigned__') ? '▸' : '▾'"></span>
-          <span class="vt-group-label">Unassigned / exploration</span>
-          <span class="vt-group-meta">
-            <span class="vt-group-count" x-text="unassignedResults().length + ' samples'"></span>
-          </span>
-        </header>
-        <div class="vt-group-body" x-show="!collapsed.has('__unassigned__')">
-          <div class="vt-cards">
-            <template x-for="r in unassignedResults()" :key="r.id">
-              <article class="vt-card" :data-result-id="r.id">
-                <div class="vt-card-head">
-                  <div class="vt-card-title">
-                    <strong x-text="r.voice_id"></strong>
-                    <span class="vt-card-engine" x-text="r.engine"></span>
+      <template x-if="unassignedResults().length > 0">
+        <section class="vt-group" :class="{ collapsed: collapsed.has('__unassigned__') }">
+          <header class="vt-group-header" @click="toggleGroup('__unassigned__')">
+            <span class="vt-caret" x-text="collapsed.has('__unassigned__') ? '▸' : '▾'"></span>
+            <span class="vt-group-label">Unassigned / exploration</span>
+            <span class="vt-group-meta">
+              <span class="vt-group-count" x-text="unassignedResults().length + ' samples'"></span>
+            </span>
+          </header>
+          <div class="vt-group-body" x-show="!collapsed.has('__unassigned__')">
+            <div class="vt-cards">
+              <template x-for="r in unassignedResults()" :key="r.id">
+                <article class="vt-card" :data-result-id="r.id">
+                  <div class="vt-card-head">
+                    <div class="vt-card-title">
+                      <strong x-text="r.voice_id"></strong>
+                      <span class="vt-card-engine" x-text="r.engine"></span>
+                    </div>
                   </div>
-                </div>
-                <button class="vt-play" @click="playResult(r)" x-text="currentAudioId === r.id && audioPlaying ? '❚❚' : '▶'"></button>
-                <div class="vt-chips" x-html="paramChips(r)"></div>
-                <div class="vt-card-actions">
-                  <button class="vt-ghost vt-xs vt-danger-btn" :class="{ armed: deleteArmed === r.id }"
-                    @click.stop="confirmDelete(r)" x-text="deleteArmed === r.id ? 'confirm?' : '✕'"></button>
-                </div>
-              </article>
-            </template>
-            <div class="vt-empty-group" x-show="unassignedResults().length === 0">Nothing unassigned.</div>
+                  <button class="vt-play" @click="playResult(r)" x-text="currentAudioId === r.id && audioPlaying ? '❚❚' : '▶'"></button>
+                  <div class="vt-chips" x-html="paramChips(r)"></div>
+                  <div class="vt-card-actions">
+                    <button class="vt-ghost vt-xs vt-danger-btn" :class="{ armed: deleteArmed === r.id }"
+                      @click.stop="confirmDelete(r)" x-text="deleteArmed === r.id ? 'confirm?' : '✕'"></button>
+                  </div>
+                </article>
+              </template>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </template>
     </main>
 
     <aside class="vt-rail">
@@ -256,7 +275,9 @@
         <template x-for="char in characters" :key="char.slot">
           <div class="vt-rail-row" :class="{ active: activeSlot === char.slot }" @click="jumpTo(char.slot)">
             <span class="vt-rail-row-label" x-text="char.label + (char.variant ? ' · ' + char.variant : '')"></span>
-            <span class="vt-rail-row-cast" x-text="castedVoice(char.slot) || '—'"></span>
+            <span class="vt-rail-row-cast"
+              :class="{ 'vt-rail-row-cast-empty': !castedVoice(char.slot) }"
+              x-text="castedVoice(char.slot) || 'press c to cast'"></span>
           </div>
         </template>
       </div>
