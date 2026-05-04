@@ -747,32 +747,7 @@ body[data-ui="v2"] .vt-app {
   display: grid;
   grid-template-rows: auto 1fr;
   background: var(--bg);
-  padding-bottom: 96px;  /* room for the floating Generate button */
 }
-
-/* ── Floating Generate (bottom-center) ── */
-body[data-ui="v2"] .vt-generate-fab {
-  position: fixed;
-  bottom: var(--sp-8);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 14px 36px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
-  font-size: var(--fs-lg);
-  letter-spacing: 0.02em;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45),
-              0 0 0 1px rgba(6, 182, 212, 0.35);
-  border: none;
-  cursor: pointer;
-  z-index: var(--z-cmdbar);
-  transition: transform var(--motion-fast) var(--ease),
-              background var(--motion-fast) var(--ease);
-}
-body[data-ui="v2"] .vt-generate-fab:hover { background: #34d6ef; transform: translateX(-50%) translateY(-1px); }
-body[data-ui="v2"] .vt-generate-fab:disabled { opacity: 0.6; cursor: not-allowed; }
 
 body[data-ui="v2"] .vt-spacer { flex: 1; }
 body[data-ui="v2"] .vt-pill,
@@ -980,6 +955,18 @@ body[data-ui="v2"] .vt-viewbar-stat {
 body[data-ui="v2"] .vt-viewbar-stat-sep {
   color: var(--text-dim);
   margin: 0 2px;
+}
+body[data-ui="v2"] .vt-viewbar .vt-viewbar-generate {
+  color: var(--accent);
+  font-weight: 600;
+}
+body[data-ui="v2"] .vt-viewbar .vt-viewbar-generate:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+body[data-ui="v2"] .vt-viewbar .vt-viewbar-generate:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ── Layout grid ── */

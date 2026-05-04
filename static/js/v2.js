@@ -432,6 +432,19 @@
         this.wizard.step = 1;
         this.popover.open = null;
       },
+      openWizardForFocused() {
+        const e = this.focusedEntry();
+        if (e) {
+          this.wizard.filterSlot = e.slot;
+          if (!this.wizard.selectedVoicesBySlot[e.slot]) {
+            this.wizard.selectedVoicesBySlot[e.slot] = {};
+          }
+          this.wizard.selectedVoicesBySlot[e.slot][`${e.g.engine}|${e.g.voice_id}`] = true;
+          // Trigger Alpine reactivity for the deep object replacement.
+          this.wizard.selectedVoicesBySlot = { ...this.wizard.selectedVoicesBySlot };
+        }
+        this.openWizard();
+      },
       closeWizard() {
         this.wizard.open = false;
       },

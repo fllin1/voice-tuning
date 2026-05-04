@@ -37,6 +37,10 @@
     </span>
     <span class="vt-viewbar-sep" aria-hidden="true"></span>
     <button class="vt-ghost vt-xs" @click="helpOpen = true" title="Keyboard shortcuts (?)">? shortcuts</button>
+    <span class="vt-viewbar-sep" aria-hidden="true"></span>
+    <button class="vt-ghost vt-viewbar-generate" @click="openWizardForFocused()" :disabled="wizard.submitting"
+      :title="focusedGroupKey ? 'Generate for focused voice (n opens empty)' : 'Open Generate wizard (n)'"
+      x-text="wizard.submitting ? 'Generating…' : 'Generate'"></button>
   </nav>
 
   <!-- ──────── Layout: main + rail ──────── -->
@@ -647,10 +651,6 @@
       </template>
     </div>
   </div>
-
-  <!-- ──────── Floating Generate ──────── -->
-  <button class="vt-generate-fab" @click="openWizard()" :disabled="wizard.submitting"
-    x-text="wizard.submitting ? 'Generating…' : 'Generate'"></button>
 
 </div>
 
